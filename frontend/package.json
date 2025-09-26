@@ -31,6 +31,7 @@
   },
   "scripts": {
     "svgr": "svgr -d src/Icons/ --ext jsx --ignore-existing src/assets/img",
+    "dev": "vite --host 127.0.0.1 --port 5173",
     "start": "vite",
     "build": "vite build",
     "serve": "vite preview"

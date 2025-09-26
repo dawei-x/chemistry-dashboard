@@ -64,6 +64,7 @@ class ServerProtocol(WebSocketServerProtocol):
     def onMessage(self, payload, is_binary):
         self.last_message = time.time()
         if is_binary:
+            logging.info('Received binary data, size: {0} bytes'.format(len(payload)))
             try:
                 self.process_binary(payload)
             except Exception as e:

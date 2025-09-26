@@ -84,6 +84,8 @@ function JoinPage() {
     const [speakersValidated, setSpeakersValidated] = useState(false)
     const [selectedSpeaker, setSelectedSpeaker] = useState(null)
     const [currBlob, setCurrBlob] = useState(null)
+    const [isRecording, setIsRecording] = useState(false)
+    const [fingerprintRecorder, setFingerprintRecorder] = useState(null)
     const [invalidName, setInvalidName] = useState(false)
     const [constraintObj, setConstraintObj] = useState(null)
 
@@ -184,6 +186,8 @@ function JoinPage() {
     useEffect(() => {
         if (displayTranscripts) {
             console.log("reloaded page - displayTranscripts")
+            console.log("Available speakers:", speakers);
+            console.log("selectedSpkrId1:", selectedSpkrId1, "selectedSpkrId2:", selectedSpkrId2);
             setSpeakerTranscripts()
         }
     }, [displayTranscripts, selectedSpkrId1, selectedSpkrId2, details])
@@ -210,7 +214,11 @@ function JoinPage() {
                     "audio-sender-processor",
                 )
                 workletProcessor.port.onmessage = (data) => {
-                    audiows.current.send(data.data.buffer)
+                    const buffer = data.data.buffer;
+                    const audioData = new Float32Array(buffer);
+                    const maxAmplitude = Math.max(...audioData.map(Math.abs));
+                    console.log("🎵 Sending audio data, buffer size:", buffer.byteLength, "max amplitude:", maxAmplitude.toFixed(4));
+                    audiows.current.send(buffer)
                 }
                 source
                     .connect(workletProcessor)
@@ -354,8 +362,55 @@ function JoinPage() {
         setCurrBlob(audioblob)
     }
 
+    const startFingerprintRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+            const chunks = [];
+
+            recorder.ondataavailable = (event) => {
+                chunks.push(event.data);
+            };
+
+            recorder.onstop = () => {
+                const blob = new Blob(chunks, { type: 'audio/wav' });
+                console.log("🎵 Custom recording completed, blob size:", blob.size);
+                setCurrBlob(blob);
+                setIsRecording(false);
+                // Stop all tracks
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            recorder.start();
+            setFingerprintRecorder(recorder);
+            setIsRecording(true);
+            console.log("🎵 Started custom recording");
+        } catch (error) {
+            console.error("Error starting recording:", error);
+        }
+    };
+
+    const stopFingerprintRecording = () => {
+        if (fingerprintRecorder && isRecording) {
+            fingerprintRecorder.stop();
+            console.log("🎵 Stopped custom recording");
+        }
+    };
+
     const addSpeakerFingerprint = async () => {
         if (audiows.current === null) {
+            console.log("audiows.current is null");
+            return
+        }
+
+        if (currBlob === null) {
+            console.log("No audio blob available. Please record audio first.");
+            console.log("currBlob is null - this means saveAudioFingerprint was not called or failed");
+            return
+        }
+
+        if (audioContext === null) {
+            console.log("Audio context not initialized. Please wait for audio setup.");
             return
         }
 
@@ -382,6 +437,25 @@ function JoinPage() {
         setCurrBlob(null)
         closeDialog()
     }
+
+    const addSpeaker = (speakerName) => {
+        if (speakerName && speakerName.trim()) {
+            const newSpeaker = {
+                id: speakers.length + 1,
+                alias: speakerName.trim(),
+                fingerprinted: false
+            };
+            setSpeakers([...speakers, newSpeaker]);
+            setCurrentForm("");
+        }
+    };
+
+    const autoDetectSpeakers = () => {
+        // Set numSpeakers to 0 to enable auto-detection
+        setNumSpeakers(0);
+        setSpeakersValidated(true);
+        setCurrentForm("");
+    };
 
     const changeAliasName = (newAlias) => {
         if (newAlias === "") {
@@ -476,6 +550,9 @@ function JoinPage() {
             if (navigator.mediaDevices != null) {
                 const stream =
                     await navigator.mediaDevices.getUserMedia(constraintObj)
+                console.log("🎤 Microphone access granted, stream:", stream);
+                console.log("🎤 Audio tracks:", stream.getAudioTracks());
+                console.log("🎤 Video tracks:", stream.getVideoTracks());
   
                 // media.then(function (stream) {
                 setStreamReference(stream)
@@ -618,13 +695,19 @@ function JoinPage() {
         audiows.current.binaryType = "arraybuffer"
 
         audiows.current.onopen = (e) => {
-            console.log("[Connected audio processor service]")
-            console.log("speakers ", speakers)
+            console.log("🎵 [Connected audio processor service]")
+            console.log("🎵 speakers ", speakers)
             setAudioConnected(true)
             setReconnectCounter(0)
             setPageTitle(name)
             setReload(true)
             setCurrentForm("")
+            
+            // Send start message immediately to prevent connection timeout
+            if (audiows.current && session && sessionDevice) {
+                console.log("🎵 Sending start message immediately")
+                requestStartAudioProcessing()
+            }
         };
 
         audiows.current.onmessage = (e) => {
@@ -645,8 +728,13 @@ function JoinPage() {
             }
         }
 
+        audiows.current.onerror = (e) => {
+            console.log("🎵 Audio WebSocket error:", e)
+            setAudioConnected(false)
+        }
+
         audiows.current.onclose = (e) => {
-            console.log("[Disconnected]", ending.value)
+            console.log("🎵 [Disconnected]", ending.value)
             if (!ending.value) {
                 if (reconnectCounter <= 5) {
                     setCurrentForm("Connecting")
@@ -905,9 +993,10 @@ function JoinPage() {
     }
 
     const generateDisplayTranscripts = (s, e) => {
-        setDisplayTranscripts(
-            transcripts.filter((t) => t.start_time >= s && t.start_time <= e),
-        )
+        const filtered = transcripts.filter((t) => t.start_time >= s && t.start_time <= e);
+        console.log("generateDisplayTranscripts - filtered transcripts:", filtered);
+        console.log("generateDisplayTranscripts - sample transcript with speaker_metrics:", filtered[0]);
+        setDisplayTranscripts(filtered);
     }
 
     const setSpeakerTranscripts = () => {
@@ -1107,6 +1196,12 @@ function JoinPage() {
             setSelectedSpeaker={setSelectedSpeaker}
             saveAudioFingerprint={saveAudioFingerprint}
             addSpeakerFingerprint={addSpeakerFingerprint}
+            startFingerprintRecording={startFingerprintRecording}
+            stopFingerprintRecording={stopFingerprintRecording}
+            isRecording={isRecording}
+            currBlob={currBlob}
+            addSpeaker={addSpeaker}
+            autoDetectSpeakers={autoDetectSpeakers}
             confirmSpeakers={confirmSpeakers}
             closeAlert={closeAlert}
             changeAliasName={changeAliasName}

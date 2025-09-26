@@ -12,6 +12,29 @@ export default defineConfig(() => {
             eslint(), 
             tailwindcss()
         ],
+        server: {
+            proxy: {
+                "/api": {  // Flask backend proxy
+                    target: "http://127.0.0.1:5000",
+                    changeOrigin: true,
+                },
+                "/socket.io": {  // Websocket proxy
+                    target: "http://127.0.0.1:5000",
+                    ws: true,
+                    changeOrigin: true,
+                },
+                "/audio_socket": {  // Audio processing proxy
+                    target: "http://127.0.0.1:9000",
+                    ws: true,
+                    changeOrigin: true,
+                },
+                "/video_socket": {  // Video processing proxy
+                    target: "http://127.0.0.1:9003",
+                    ws: true,
+                    changeOrigin: true,
+                },
+            },
+        },
         resolve: {
             alias: {
                 "@": path.resolve(__dirname, "./src"),

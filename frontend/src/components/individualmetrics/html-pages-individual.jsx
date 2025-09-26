@@ -23,7 +23,7 @@ function IndividualFeaturePage(props) {
                                 className={style["score-header"]}
                                 style={{
                                     width: adjDim(59) + "px",
-                                    "padding-right": adjDim(24) + "px",
+                                    paddingRight: adjDim(24) + "px",
                                 }}
                             >
                                 Score
@@ -59,18 +59,18 @@ function IndividualFeaturePage(props) {
                                             className={style.score}
                                             style={{
                                                 width: adjDim(59) + "px",
-                                                "padding-right":
+                                                paddingRight:
                                                     adjDim(24) + "px",
                                             }}
                                         >
                                             <div
                                                 className={style.number}
                                                 style={{
-                                                    "font-size":
+                                                    fontSize:
                                                         adjDim(22) + "px",
                                                 }}
                                             >
-                                                {Math.round(feature.average)}
+                                                {Math.round(feature.average || 0)}
                                             </div>
                                             <div
                                                 className={

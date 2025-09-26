@@ -215,6 +215,20 @@ function ByodJoinPage(props) {
                                                             speakers(less
                                                             accurate){" "}
                                                         </div>
+                                                        <div className="mt-4 flex flex-col gap-2">
+                                                            <button
+                                                                className="wide-button"
+                                                                onClick={() => props.openForms("addSpeaker")}
+                                                            >
+                                                                Add Speaker
+                                                            </button>
+                                                            <button
+                                                                className="wide-button secondary"
+                                                                onClick={() => props.openForms("autoDetectSpeakers")}
+                                                            >
+                                                                Auto Detect Speakers
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                 )}
                                             {props.speakers.map(
@@ -587,20 +601,30 @@ function ByodJoinPage(props) {
                             <div className="sans text-base/normal font-bold sm:text-xl/loose">
                                 Record Speaker Fingerprint:
                             </div>
-                            <VoiceRecorder
-                                onAudioDownload={props.saveAudioFingerprint}
-                                downloadable={false}
-                                uploadAudioFile={false}
-                                width="100%"
-                                mainContainerStyle={{
-                                    "margin-right": "auto",
-                                    "margin-left": "auto",
-                                }}
-                                controllerContainerStyle={{ height: "3rem" }}
-                            />
+                            <div className="flex flex-col gap-4 items-center">
+                                {!props.isRecording ? (
+                                    <button
+                                        className="toolbar-button z-40"
+                                        onClick={props.startFingerprintRecording}
+                                    >
+                                        🎤 Start Recording
+                                    </button>
+                                ) : (
+                                    <button
+                                        className="toolbar-button z-40 bg-red-500"
+                                        onClick={props.stopFingerprintRecording}
+                                    >
+                                        ⏹️ Stop Recording
+                                    </button>
+                                )}
+                                <div className="text-sm text-gray-600">
+                                    {props.isRecording ? "Recording... Speak now!" : "Click to start recording"}
+                                </div>
+                            </div>
                             <button
                                 className="toolbar-button z-40"
                                 onClick={props.addSpeakerFingerprint}
+                                disabled={!props.currBlob}
                             >
                                 Confirm
                             </button>
@@ -648,6 +672,72 @@ function ByodJoinPage(props) {
                                 onClick={props.closeDialog}
                             >
                                 {" "}
+                                Cancel
+                            </button>
+                        </div>
+                    )) ||
+                    (props.currentForm === "addSpeaker" && (
+                        <div
+                            className={style5["dialog-window"]}
+                            style={{ "min-width": adjDim(270) + "px" }}
+                        >
+                            <div className={style5["dialog-heading"]}>
+                                Add New Speaker:
+                            </div>
+                            <input
+                                id="txtSpeakerName"
+                                placeholder="Enter speaker name"
+                                className={style5["field-input"]}
+                                maxLength="64"
+                            />
+                            <div>
+                                {props.invalidName
+                                    ? "Speaker name is invalid."
+                                    : ""}
+                            </div>
+                            <button
+                                className={style5["basic-button"]}
+                                onClick={() => {
+                                    const speakerName = document.getElementById("txtSpeakerName").value;
+                                    if (speakerName.trim()) {
+                                        props.addSpeaker(speakerName);
+                                    }
+                                }}
+                            >
+                                Add Speaker
+                            </button>
+                            <button
+                                className={style5["cancel-button"]}
+                                onClick={props.closeDialog}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    )) ||
+                    (props.currentForm === "autoDetectSpeakers" && (
+                        <div
+                            className={style5["dialog-window"]}
+                            style={{ "min-width": adjDim(270) + "px" }}
+                        >
+                            <div className={style5["dialog-heading"]}>
+                                Auto Detect Speakers:
+                            </div>
+                            <div className={style5["dialog-body"]}>
+                                This will automatically detect speakers during the discussion.
+                                Less accurate than manual speaker setup.
+                            </div>
+                            <button
+                                className={style5["basic-button"]}
+                                onClick={() => {
+                                    props.autoDetectSpeakers();
+                                }}
+                            >
+                                Enable Auto Detection
+                            </button>
+                            <button
+                                className={style5["cancel-button"]}
+                                onClick={props.closeDialog}
+                            >
                                 Cancel
                             </button>
                         </div>

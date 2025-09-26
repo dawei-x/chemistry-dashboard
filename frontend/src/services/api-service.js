@@ -22,7 +22,6 @@ export class ApiService {
     return (
       this.getWSSProtocol() +
       "//" +
-      // window.location.host.split(":")[0] +
       window.location.host +
       "/audio_socket"
     );
@@ -30,13 +29,11 @@ export class ApiService {
   
     getVideoWebsocketEndpoint() {
     return (
-         this.getWSSProtocol() +
+      this.getWSSProtocol() +
       "//" +
-      // window.location.host.split(":")[0] +
       window.location.host +
       "/video_socket"
     );
-      
   }
 
    _generateHeaders(headers,data) {
