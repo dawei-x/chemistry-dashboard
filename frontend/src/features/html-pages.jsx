@@ -40,9 +40,9 @@ function FeaturePage(props) {
 
   const toggleId = (id) => {
     const sid = String(id);
-    const currentPairId = props.currentSessionDeviceId; // Need to pass this from parent
+    const currentPairId = props.currentSessionDeviceId;
     
-    // [NEED TO FIX] Prevent unchecking current session-device
+    // Prevent unchecking current session-device
     if (sid === currentPairId && pendingIds.includes(sid)) {
       return;
     }
@@ -57,7 +57,7 @@ function FeaturePage(props) {
   };
   const removeChip = (id) => {
     const currentPairId = props.currentSessionDeviceId;
-    // [NEED TO FIX] Prevent removing current session-device
+    // Prevent removing current session-device
     if (String(id) === currentPairId) return;
     
     const next = appliedIds.filter(x => x !== String(id));
@@ -79,6 +79,7 @@ function FeaturePage(props) {
     const mean = sel.reduce((acc, s) => acc + (s.average ?? 0), 0) / sel.length;
     return Math.round(mean);
   };
+  
   const aggTrend = (feature) => {
     if (!multiActive || !Array.isArray(feature.series)) return feature.trend ?? 0;
     const sel = feature.series.filter(s => appliedIds.includes(String(s.deviceId)));
@@ -90,9 +91,37 @@ function FeaturePage(props) {
     return 0;
   };
 
+  // === LLM score aggregation helper ===
+  const aggLlmScore = (feature) => {
+    if (!multiActive || !Array.isArray(feature.llmSeries)) {
+      // Single mode - return the llmScore directly
+      return Math.round(feature.llmScore ?? 0);
+    }
+    // Multi mode - aggregate from selected devices
+    const sel = feature.llmSeries.filter(s => appliedIds.includes(String(s.deviceId)));
+    if (sel.length === 0) return 0;
+    const mean = sel.reduce((acc, s) => acc + (s.score ?? 0), 0) / sel.length;
+    return Math.round(mean);
+  };
+
+  // Get aggregated LLM explanation (for multi-mode, show all device explanations)
+  const getLlmExplanation = (feature) => {
+    if (!multiActive || !Array.isArray(feature.llmSeries)) {
+      return feature.llmExplanation || '';
+    }
+    // Multi mode - combine explanations from selected devices
+    const sel = feature.llmSeries.filter(s => appliedIds.includes(String(s.deviceId)));
+    const explanations = sel
+      .filter(s => s.explanation)
+      .map(s => `${s.deviceLabel}: ${s.explanation}`)
+      .join('\n\n');
+    return explanations;
+  };
+
   // === ONE overlaid time-axis mini-plot per metric ===
   // Colorblind-friendly palette (using Okabe-Ito colors)
   const palette = ["#0173B2", "#DE8F05", "#029E73", "#CC78BC", "#ECE133", "#56B4E9", "#949494", "#F0E442"];
+  
   const OverlayPlot = ({ feature }) => {
     // Use multi-session style if we're in multi-session mode (even with single selection)
     if (!multiActive || !Array.isArray(feature.series)) {
@@ -184,8 +213,7 @@ function FeaturePage(props) {
             width: "90%",
             textAlign: "left",
             paddingLeft: adjDim(12) + "px",
-            color: "#666",
-            //fontSize: adjDim(14) + "px"
+            color: "#666"
           }}
           onClick={() => setIsOpen(v => !v)}
         >
@@ -197,7 +225,7 @@ function FeaturePage(props) {
             ref={panelRef}
             style={{
               position: "absolute", zIndex: 10, top: "100%", left: 0,
-              width: "90%", // Ensure it fits within container
+              width: "90%",
               background: "white", border: "1px solid #ddd", borderRadius: 8, marginTop: 6, padding: 8,
               maxHeight: 280, overflowY: "auto", boxShadow: "0 4px 12px rgba(0,0,0,0.1)"
             }}
@@ -243,12 +271,31 @@ function FeaturePage(props) {
     <>
       {showDevicePicker && <DevicePicker />}
 
+      {/* Refresh button for LLM scores */}
+      {props.refreshLlmScores && (
+        <div className="small-section" style={{ marginBottom: adjDim(8) + "px" }}>
+          <button 
+            className="option-button" 
+            onClick={props.refreshLlmScores}
+            disabled={props.llmLoading}
+            style={{ 
+              fontSize: adjDim(12) + "px",
+              opacity: props.llmLoading ? 0.6 : 1,
+              cursor: props.llmLoading ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {props.llmLoading ? 'Generating LLM Scores...' : 'Refresh LLM Scores'}
+          </button>
+        </div>
+      )}
+
       <div className="small-section">
         <table className={style["features-table"]}>
           <thead>
             <tr>
               <th className={style["desc-header"]} style={{ width: adjDim(186) + "px" }}>Classifier</th>
               <th className={style["score-header"]} style={{ width: adjDim(59) + "px", paddingRight: adjDim(24) + "px" }}>Score</th>
+              <th className={style["score-header"]} style={{ width: adjDim(80) + "px", paddingRight: adjDim(24) + "px" }}>LLM Score</th>
               <th className={style["graph-header"]} style={{ width: multiActive ? adjDim(120) + "px" : adjDim(74) + "px" }}>
                 {multiActive ? "Graph" : "Graph"}
               </th>
@@ -264,12 +311,17 @@ function FeaturePage(props) {
                 .map((feature, idx) => {
                   const avg = multiActive ? aggAverage(feature) : Math.round(feature.average);
                   const trend = multiActive ? aggTrend(feature) : feature.trend;
+                  const llmScore = aggLlmScore(feature);
+                  const llmExplanation = getLlmExplanation(feature);
+                  
                   return (
                     <tr key={idx}>
                       <td>
                         <img alt="quest" onClick={() => props.getInfo(feature.name)} className={style["info-button"]} src={questIcon} />
                         {feature.name}
                       </td>
+                      
+                      {/* LIWC Score column */}
                       <td className={style.score} style={{ width: adjDim(59) + "px", paddingRight: adjDim(24) + "px" }}>
                         <div className={style.number} style={{ fontSize: adjDim(22) + "px" }}>{avg}</div>
                         <div
@@ -291,6 +343,54 @@ function FeaturePage(props) {
                           </div>
                         )}
                       </td>
+                      
+                      {/* LLM Score column with explanation icon */}
+                      <td className={style.score} style={{ width: adjDim(80) + "px", paddingRight: adjDim(24) + "px" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: adjDim(4) + "px" }}>
+                          <div className={style.number} style={{ fontSize: adjDim(22) + "px", flex: 1 }}>
+                            {llmScore || "-"}
+                          </div>
+                          {llmScore > 0 && llmExplanation && (
+                            <img 
+                              alt="LLM explanation" 
+                              onClick={() => props.showLlmExplanation(feature.name, llmExplanation)}
+                              className={style["info-button"]} 
+                              src={questIcon}
+                              style={{ 
+                                cursor: "pointer",
+                                filter: "hue-rotate(30deg)",  // Make it slightly different color
+                                width: adjDim(18) + "px",
+                                height: adjDim(18) + "px"
+                              }}
+                            />
+                          )}
+                        </div>
+                        {/* Show score difference indicator if both scores exist */}
+                        {llmScore > 0 && (
+                          <div 
+                            style={{ 
+                              fontSize: adjDim(11) + "px", 
+                              color: llmScore > avg ? "#029E73" : llmScore < avg ? "#DE8F05" : "#666",
+                              marginTop: adjDim(2) + "px"
+                            }}
+                          >
+                            {llmScore > avg ? "+" : ""}{llmScore - avg}
+                          </div>
+                        )}
+                        {/* Show individual device LLM scores for multi-session */}
+                        {multiActive && Array.isArray(feature.llmSeries) && (
+                          <div style={{ marginTop: adjDim(4) + "px", lineHeight: 1.2 }}>
+                            {feature.llmSeries
+                              .filter(s => appliedIds.includes(String(s.deviceId)))
+                              .map((s, i, arr) => (
+                                <span key={s.deviceId} style={{ fontSize: adjDim(10) + "px", opacity: 0.75 }}>
+                                  {s.deviceLabel}: {Math.round(s.score) || "-"}{i < arr.length - 1 ? " • " : ""}
+                                </span>
+                              ))}
+                          </div>
+                        )}
+                      </td>
+                      
                       <td><OverlayPlot feature={feature} /></td>
                     </tr>
                   );
@@ -300,6 +400,7 @@ function FeaturePage(props) {
         </table>
       </div>
 
+      {/* Feature info dialog */}
       <DialogBox
         itsclass={"add-dialog"}
         heading={props.featureHeader}
@@ -307,8 +408,19 @@ function FeaturePage(props) {
         show={props.showFeatureDialog}
         closedialog={props.closeDialog}
       />
+
+      {/* LLM Explanation dialog */}
+      {props.showLlmExplanationDialog && props.selectedLlmExplanation && (
+        <DialogBox
+          itsclass={"add-dialog"}
+          heading={`LLM Analysis: ${props.selectedLlmExplanation.metric}`}
+          message={props.selectedLlmExplanation.explanation}
+          show={props.showLlmExplanationDialog}
+          closedialog={props.closeDialog}
+        />
+      )}
     </>
   );
 }
 
-export { FeaturePage }
+export { FeaturePage };

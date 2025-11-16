@@ -207,9 +207,9 @@ class AudioProcessor:
             doa = None
             if self.config.doa and self.config.channels == 6:
                 word_timings = [(word.start_time.seconds + (word.start_time.nanos / NANO),
-                                 word.end_time.seconds + (word.end_time.nanos / NANO)) for word in words]
+                                word.end_time.seconds + (word.end_time.nanos / NANO)) for word in words]
                 doa = calculateDOA(start_time, audio_data, word_timings,
-                                   16000, self.config.channels, self.config.depth)
+                                16000, self.config.channels, self.config.depth)
 
             features = None
             if self.config.features:
@@ -221,6 +221,8 @@ class AudioProcessor:
             # Perform Speaker Diarization
             speaker_tag = None
             speaker_id = -1
+            speaker_metrics_handled = False  # Track if speaker_metrics posted the transcript
+            
             if self.config.diarization and self.fingerprints and len(self.fingerprints):
                 speaker_tag, speaker_id = checkFingerprints(
                         audio_data, self.fingerprints, self.diarization_model)
@@ -238,6 +240,7 @@ class AudioProcessor:
                         'speaker_tag': speaker_tag,
                         'speaker_id': speaker_id
                     })
+                speaker_metrics_handled = True  # Mark that speaker_metrics posted the transcript
             else:
                 if self.config.diarization:
                     if len(self.embeddings) == 0 and self.embeddings_file is not None:
@@ -260,7 +263,7 @@ class AudioProcessor:
 
                     np.save(self.embeddings_file, np.array(self.embeddings))
                 
-            # In process_transcript method, replace the concept extraction section with:
+            # Concept extraction
             if self.concept_extractor and transcript_text and hasattr(self.config, 'concept_mapping') and self.config.concept_mapping:
                 try:
                     concept_update = self.concept_extractor.add_transcript(
@@ -270,9 +273,6 @@ class AudioProcessor:
                         end_time
                     )
                     if concept_update:
-                        # Use the actual session_device_id from config
-                        # This should match what's in the database
-                        # session_device_id = self.config.sessionId  # Use just the ID, not "sessionId:deviceId"
                         session_device_id = int(self.config.auth_key.split('-')[0])
                         
                         success = callbacks.post_concept_update(
@@ -287,21 +287,25 @@ class AudioProcessor:
                 except Exception as e:
                     logging.error(f"Concept extraction failed: {e}", exc_info=True)
                 
-            success, transcript_id = callbacks.post_transcripts(
-                self.config.auth_key, start_time, end_time,
-                transcript_text, doa, questions, keywords,
-                features, topic_id, speaker_tag, speaker_id)
+            # Only post transcript if speaker_metrics didn't already handle it
+            if not speaker_metrics_handled:
+                success, transcript_id = callbacks.post_transcripts(
+                    self.config.auth_key, start_time, end_time,
+                    transcript_text, doa, questions, keywords,
+                    features, topic_id, speaker_tag, speaker_id)
 
-            processing_time = time.time() - processing_timer
+                processing_time = time.time() - processing_timer
 
-            if success:
-                logging.info(f"Processing results posted successfully for client {self.config.auth_key} (Processing time: {processing_time}) @ {start_time} for transcript {transcript_id}")
+                if success:
+                    logging.info(f"Processing results posted successfully for client {self.config.auth_key} (Processing time: {processing_time}) @ {start_time} for transcript {transcript_id}")
+                else:
+                    logging.warning(f"Processing results FAILED to post for client {self.config.auth_key} (Processing time: {processing_time})")
             else:
-                logging.warning(f"Processing results FAILED to post for client {self.config.auth_key} (Processing time: {processing_time})")
+                logging.info(f"Skipping post_transcripts - already handled by speaker_metrics for {self.config.auth_key}")
 
         except Exception as e:
             logging.error("Processing FAILED for client %s: %s",
-                          self.config.auth_key, e, exc_info=True)
+                        self.config.auth_key, e, exc_info=True)
 
         # Check if this was the final process of the transmission.
         self.running_processes -= 1

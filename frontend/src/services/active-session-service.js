@@ -119,6 +119,7 @@ export class ActiveSessionService {
         this.socket.on("transcript_update", (e) => {
           const data = JSON.parse(e);
             const currentTranscripts = this.transcriptSource.getValue();
+            console.log(`BEFORE: ${currentTranscripts.length} transcripts, adding ID ${data.id}`);
             currentTranscripts.push(TranscriptModel.fromJson(data));
             this.transcriptSource.next(currentTranscripts);
         });
@@ -136,6 +137,7 @@ export class ActiveSessionService {
         // Update transcripts and speaker metrics.
         this.socket.on("transcript_metrics_update", (e) => {
             const data = JSON.parse(e)
+            console.log(`METRICS UPDATE: adding transcript ID ${data.transcript.id}`);
 
             const speaker_metrics = SpeakerMetricsModel.fromJsonList(
                 data["speaker_metrics"],
@@ -170,6 +172,7 @@ export class ActiveSessionService {
 
     close() {
         if (this.socket != null) {
+            this.socket.off();
             this.socket.disconnect()
         }
         this.initialized = false

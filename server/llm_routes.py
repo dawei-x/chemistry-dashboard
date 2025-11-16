@@ -3,6 +3,8 @@ import logging
 import sys
 import os
 
+import database
+
 # Add the audio_processing directory to the path so we can import from it
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'audio_processing'))
 
@@ -11,6 +13,7 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
+from llm_scoring_service import update_llm_scores_for_session_device
 
 load_dotenv()
 
@@ -455,3 +458,114 @@ IMPORTANT: Every node ID must appear in exactly one cluster."""
     except Exception as e:
         logger.error(f"Cluster creation failed: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+
+
+@llm_bp.route('/api/v1/sessions/<int:session_id>/devices/<int:device_id>/llm-metrics', methods=['GET'])
+def get_session_device_llm_metrics(session_id, device_id):
+    """
+    Get LLM metrics for a specific session device.
+    """
+    # Get session device
+    session_devices = database.get_session_devices(session_id=session_id, device_id=device_id)
+    if not session_devices:
+        return jsonify({'error': 'Session device not found'}), 404
+    
+    session_device = session_devices[0]
+    
+    # Get LLM metrics
+    llm_metrics = database.get_llm_metrics(session_device_id=session_device.id)
+    
+    if not llm_metrics:
+        return jsonify({
+            'message': 'LLM metrics not yet generated for this session device',
+            'session_device_id': session_device.id
+        }), 404
+    
+    return jsonify(llm_metrics.json()), 200
+
+@llm_bp.route('/api/v1/sessions/<int:session_id>/devices/<int:device_id>/llm-metrics', methods=['POST'])
+def refresh_session_device_llm_metrics(session_id, device_id):
+    """
+    Refresh/regenerate LLM metrics for a specific session device.
+    """
+    # Get session device
+    session_devices = database.get_session_devices(session_id=session_id, device_id=device_id)
+    if not session_devices:
+        return jsonify({'error': 'Session device not found'}), 404
+    
+    session_device = session_devices[0]
+    
+    # Get time range from request if provided
+    time_range = request.json.get('timeRange') if request.json else None
+    
+    # Update LLM scores
+    llm_metrics = update_llm_scores_for_session_device(
+        session_device.id, 
+        time_range=time_range
+    )
+    
+    if not llm_metrics:
+        return jsonify({'error': 'Failed to generate LLM metrics'}), 500
+    
+    return jsonify(llm_metrics.json()), 200
+
+@llm_bp.route('/api/v1/sessions/<int:session_id>/llm-metrics', methods=['GET'])
+def get_all_session_llm_metrics(session_id):
+    """
+    Get LLM metrics for all devices in a session.
+    """
+    # Get all session devices
+    session_devices = database.get_session_devices(session_id=session_id)
+    
+    if not session_devices:
+        return jsonify({'error': 'No devices found for this session'}), 404
+    
+    # Get LLM metrics for each device
+    results = []
+    for device in session_devices:
+        llm_metrics = database.get_llm_metrics(session_device_id=device.id)
+        results.append({
+            'session_device': device.json(),
+            'llm_metrics': llm_metrics.json() if llm_metrics else None
+        })
+    
+    return jsonify({
+        'session_id': session_id,
+        'devices': results
+    }), 200
+
+
+
+@llm_bp.route('/api/v1/session-devices/<int:session_device_id>/llm-metrics', methods=['GET'])
+def get_llm_metrics_direct(session_device_id):
+    """Get LLM metrics by session_device_id directly"""
+    llm_metrics = database.get_llm_metrics(session_device_id=session_device_id)
+    
+    if not llm_metrics:
+        return jsonify({
+            'message': 'LLM metrics not yet generated',
+            'session_device_id': session_device_id
+        }), 404
+    
+    return jsonify(llm_metrics.json()), 200
+
+
+@llm_bp.route('/api/v1/session-devices/<int:session_device_id>/llm-metrics', methods=['POST'])
+def refresh_llm_metrics_direct(session_device_id):
+    """Refresh LLM metrics by session_device_id directly"""
+    from llm_scoring_service import generate_llm_scores_for_session_device
+    
+    llm_metrics = generate_llm_scores_for_session_device(session_device_id)
+    
+    if not llm_metrics:
+        return jsonify({'error': 'Failed to generate LLM metrics'}), 500
+    
+    return jsonify(llm_metrics.json()), 200
+
+
+
+@llm_bp.route('/api/v1/test-llm', methods=['GET'])
+def test_route():
+    return jsonify({"message": "LLM routes are working"}), 200

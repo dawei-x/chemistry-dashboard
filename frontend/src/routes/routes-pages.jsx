@@ -1,24 +1,25 @@
-import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom'
+import { Routes, Route, BrowserRouter, Navigate } from 'react-router-dom';
 import LandingPageComponent from '../landing-page/landing-page-components';
-import { LoginPage } from '../login/login-component'
-import {HomeScreen} from '../homescreen/homescreen-component'
+import { LoginPage } from '../login/login-component';
+import {HomeScreen} from '../homescreen/homescreen-component';
 import {JoinPage} from '../byod-join/byod-join-component';
 import {ManageKeywordListsComponent} from '../manage-keyword-lists/manage-keyword-lists-component';
 import {KeywordListItemsComponent} from '../keyword-list-items/keyword-list-items-component';
-import {SessionsComponent} from '../sessions/sessions-component'
-import {CreateSessionComponent} from '../create-session/create-session-component'
-import {PodsOverviewComponent} from '../pods-overview/pods-overview-component'
+import {SessionsComponent} from '../sessions/sessions-component';
+import {CreateSessionComponent} from '../create-session/create-session-component';
+import {PodsOverviewComponent} from '../pods-overview/pods-overview-component';
 import {SessionManagerComponent} from '../session-manager/session-manager-component';
-import {DiscussionGraphComponent} from '../discussion-graph/discussion-graph-component'
-import {FileUploadComponent} from '../file-upload/file-upload-component'
+import {DiscussionGraphComponent} from '../discussion-graph/discussion-graph-component';
+import {FileUploadComponent} from '../file-upload/file-upload-component';
 import { SettingsComponent } from '../settings/settings-component';
 import { PodComponent } from '../pod-details/pod-component';
-import {TranscriptsComponent} from '../transcripts/transcripts-component'
-import {TopicListComponent} from '../topic-list/topic-list-component'
-import {ManageTopicModelsComponent} from '../manage-topic-models/manage-topic-models-component'
-import {PodsComponent} from '../pods/pods-component'
-import {ProtectedRoute} from './protected-route'
+import {TranscriptsComponent} from '../transcripts/transcripts-component';
+import {TopicListComponent} from '../topic-list/topic-list-component';
+import {ManageTopicModelsComponent} from '../manage-topic-models/manage-topic-models-component';
+import {PodsComponent} from '../pods/pods-component';
+import {ProtectedRoute} from './protected-route';
 import {SessionFeedbackForm} from "../feedback-form/session-feedback-form";
+import {RagSearchComponent} from '../rag-search/RagSearchComponent';
 
 function PageRouter() {
     
@@ -50,6 +51,7 @@ function PageRouter() {
                 <Route path='/pods' element={<ProtectedRoute component={PodsComponent}/> } />
                 <Route path='/settings' element={<ProtectedRoute component={SettingsComponent}/> } />
                 <Route path="/feedback-form/:sessionId" element={<SessionFeedbackForm />} />
+                <Route path='/discover' element={<ProtectedRoute component={RagSearchComponent} />}/>
             </Routes>
         </BrowserRouter>
     )

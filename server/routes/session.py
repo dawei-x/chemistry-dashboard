@@ -381,12 +381,10 @@ def get_transcripts_for_concept(device_id, timestamp):
         # Get time range (±15 seconds)
         start_time = max(0, timestamp - 15)
         end_time = timestamp + 15
-        
-        # Use your existing database function
+    
         import database
         all_transcripts = database.get_transcripts(session_device_id=device_id)
         
-        # Filter by time
         filtered = []
         for t in all_transcripts:
             if t.start_time >= start_time and t.start_time <= end_time:

@@ -4,10 +4,11 @@ import database
 import requests
 import socketio_helper
 from datetime import datetime
-from app import socketio
+from app import socketio, scheduler
 import json
 from device_websockets import ConnectionManager
 from redis_helper import RedisSessions
+from llm_scoring_service import generate_llm_scores_for_session_device
 
 def create_session(user_id, name, devices, keyword_list_id, topic_model_id, byod, features, doa, folder):
     session, keywords = database.create_session(user_id, keyword_list_id, topic_model_id, name, folder)
@@ -30,7 +31,7 @@ def create_session(user_id, name, devices, keyword_list_id, topic_model_id, byod
     return session
 
 def end_session(session_id):
-    logging.info(f"END_SESSION called for session {session_id}")  # ADD THIS
+    logging.info(f"END_SESSION called for session {session_id}")
     session = database.get_sessions(id=session_id)
     if not session:
         return False, 'Session does not exist.'
@@ -56,6 +57,24 @@ def end_session(session_id):
                 logging.info(f"No clusters created for session_device {session_device.id} (possibly no concepts)")
     except Exception as e:
         logging.error(f"Failed to create concept clusters on session end: {e}")
+
+    # Schedule LLM scoring for each session device ===
+    try:
+        for session_device in session_devices:
+            # Schedule as background job to avoid blocking the response
+            scheduler.add_job(
+                func=generate_llm_scores_for_session_device,
+                trigger='date',  # Run once, immediately
+                args=[session_device.id],
+                id=f'llm_score_{session_device.id}',  # Unique job ID
+                replace_existing=True,  # Replace if job already exists
+                misfire_grace_time=30  # Allow 30 seconds grace time
+            )
+            logging.info(f"Scheduled LLM scoring for session_device {session_device.id}")
+    except Exception as e:
+        logging.error(f"Failed to schedule LLM scoring: {e}")
+        # Don't fail the session end if LLM scoring fails
+    
 
     # Update session_devices
     for session_device in session_devices:

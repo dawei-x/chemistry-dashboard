@@ -25,7 +25,6 @@ function TranscriptsComponent(){
   const [dialogKeywords, setDialogKeywords] = useState();
   const [currentForm, setCurrentForm] = useState("");
   const [displayTranscripts, setDisplayTranscripts] = useState([]);
-  const [subscriptions, setSubscriptions] = useState([]);
   const [hasScrolled, setHasScrolled] = useState(false);
   const [showKeywords, setShowKeywords] = useState(true);
   const [trigger, setTrigger] = useState(0)
@@ -41,6 +40,8 @@ function TranscriptsComponent(){
 
   
   useEffect(() => {
+  let transcriptSub; // Local variable to store subscription
+  
   const index = searchParam.get('index');
   if(index !== undefined){
     setTranscriptIndex(parseInt(index, 10))
@@ -58,7 +59,7 @@ function TranscriptsComponent(){
   
   const highlightTime = searchParam.get('highlight_time') || sessionStorage.getItem('highlightTime');
   if (highlightTime) {
-    sessionStorage.removeItem('highlightTime'); // Clear after using
+    sessionStorage.removeItem('highlightTime');
   }
   if (highlightTime) {
     setHighlightRange({
@@ -68,7 +69,6 @@ function TranscriptsComponent(){
   }
 
   if(sessionDeviceId !== undefined){
-    // Check if service exists
     if (activeSessionService && activeSessionService.getSession) {
       try {
         const sessSub = activeSessionService.getSession();
@@ -80,11 +80,17 @@ function TranscriptsComponent(){
         if(deviceSub !== undefined){
           setSessionDevice(deviceSub);
         }
-
         if (transcripts.length <= 0) {
-          const transcriptSub = activeSessionService.getTranscripts()
+          transcriptSub = activeSessionService.getTranscripts();
           if (transcriptSub && transcriptSub.subscribe) {
             transcriptSub.subscribe(e => {
+              console.log("RAW WEBSOCKET DATA:", e);
+              console.log("Array length:", e.length);
+              // Check if there are duplicates in the raw data
+              const ids = e.map(t => t.id);
+              const uniqueIds = [...new Set(ids)];
+              console.log("Total IDs:", ids.length, "Unique IDs:", uniqueIds.length);
+              
               if (Object.keys(e).length !== 0) {
                 const data = e.filter(t => t.session_device_id === parseInt(sessionDeviceId, 10))
                     .sort((a, b) => (a.start_time > b.start_time) ? 1 : -1)
@@ -92,14 +98,12 @@ function TranscriptsComponent(){
                 setReload(true)
               }
             })
-            subscriptions.push(transcriptSub);
           }
         }
       } catch (err) {
         console.error('Service access error:', err);
       }
     } else {
-      // Direct access - no service
       const pathParts = window.location.pathname.split('/');
       const sessionId = pathParts[pathParts.indexOf('sessions') + 1];
       
@@ -120,42 +124,17 @@ function TranscriptsComponent(){
   }
 
   return () => {
-    // Safer cleanup
-    if (subscriptions && subscriptions.length > 0) {
-      subscriptions.forEach(sub => {
-        try {
-          if (sub && sub.unsubscribe) {
-            sub.unsubscribe();
-          }
-        } catch (e) {
-          // Ignore
-        }
-      });
+    // Clean up the subscription properly
+    if (transcriptSub && transcriptSub.unsubscribe) {
+      try {
+        transcriptSub.unsubscribe();
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
     }
   }
-}, [])
+}, [sessionDeviceId]) // Add sessionDeviceId as dependency
 
-useEffect(() => {
-  // Fallback: Load transcripts directly when no activeSessionService
-  if (sessionDeviceId && transcripts.length === 0) {
-    // Extract sessionId from the URL path
-    const pathParts = window.location.pathname.split('/');
-    const sessionIdIndex = pathParts.indexOf('sessions') + 1;
-    const sessionId = pathParts[sessionIdIndex];
-    
-    // Fetch transcripts using your actual endpoint
-    fetch(`http://localhost:5002/api/v1/sessions/${sessionId}/devices/${sessionDeviceId}/transcripts`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.transcripts) {
-          const sorted = data.transcripts.sort((a, b) => a.start_time - b.start_time);
-          setTranscripts(sorted);
-          setReload(true);
-        }
-      })
-      .catch(err => console.error('Failed to load transcripts:', err));
-  }
-}, [sessionDeviceId]);
 
 useEffect(()=>{
   if(reload){

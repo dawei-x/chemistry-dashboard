@@ -30,6 +30,7 @@ from tables.concept_node import ConceptNode
 from tables.concept_edge import ConceptEdge
 from tables.concept_cluster import ConceptCluster
 from tables.cluster_node_mapping import cluster_node_mapping
+from tables.llm_metrics import LLMMetrics
 
 # Saves changes made to database (models)
 def save_changes():
@@ -640,6 +641,97 @@ def delete_device_transcripts(session_device_id):
     db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id == Transcript.id).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.query(Transcript).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.commit()
+
+
+# -------------------------
+# LLM Metrics
+# -------------------------
+
+def get_llm_metrics(id=None, session_device_id=None):
+    """Get LLM metrics by id or session_device_id"""
+    query = db.session.query(LLMMetrics)
+    if id is not None:
+        return query.filter(LLMMetrics.id == id).first()
+    if session_device_id is not None:
+        return query.filter(LLMMetrics.session_device_id == session_device_id).first()
+    return query.all()
+
+def add_llm_metrics(session_device_id, scores_dict, explanations_dict, transcript_count, llm_model='gpt-4o'):
+    """Add new LLM metrics for a session device"""
+    # Check if metrics already exist for this session_device
+    existing = get_llm_metrics(session_device_id=session_device_id)
+    if existing:
+        return update_llm_metrics(
+            existing.id, 
+            scores_dict=scores_dict, 
+            explanations_dict=explanations_dict,
+            transcript_count=transcript_count,
+            llm_model=llm_model
+        )
+    
+    metrics = LLMMetrics(
+        session_device_id=session_device_id,
+        emotional_tone_score=scores_dict.get('emotional_tone', None),
+        analytic_thinking_score=scores_dict.get('analytic_thinking', None),
+        clout_score=scores_dict.get('clout', None),
+        authenticity_score=scores_dict.get('authenticity', None),
+        certainty_score=scores_dict.get('certainty', None),
+        emotional_tone_explanation=explanations_dict.get('emotional_tone', ''),
+        analytic_thinking_explanation=explanations_dict.get('analytic_thinking', ''),
+        clout_explanation=explanations_dict.get('clout', ''),
+        authenticity_explanation=explanations_dict.get('authenticity', ''),
+        certainty_explanation=explanations_dict.get('certainty', ''),
+        transcript_count=transcript_count,
+        llm_model=llm_model
+    )
+    db.session.add(metrics)
+    db.session.commit()
+    return metrics
+
+def update_llm_metrics(id, scores_dict=None, explanations_dict=None, transcript_count=None, llm_model=None):
+    """Update existing LLM metrics"""
+    metrics = get_llm_metrics(id=id)
+    if not metrics:
+        return None
+    
+    if scores_dict:
+        if 'emotional_tone' in scores_dict:
+            metrics.emotional_tone_score = scores_dict['emotional_tone']
+        if 'analytic_thinking' in scores_dict:
+            metrics.analytic_thinking_score = scores_dict['analytic_thinking']
+        if 'clout' in scores_dict:
+            metrics.clout_score = scores_dict['clout']
+        if 'authenticity' in scores_dict:
+            metrics.authenticity_score = scores_dict['authenticity']
+        if 'certainty' in scores_dict:
+            metrics.certainty_score = scores_dict['certainty']
+    
+    if explanations_dict:
+        if 'emotional_tone' in explanations_dict:
+            metrics.emotional_tone_explanation = explanations_dict['emotional_tone']
+        if 'analytic_thinking' in explanations_dict:
+            metrics.analytic_thinking_explanation = explanations_dict['analytic_thinking']
+        if 'clout' in explanations_dict:
+            metrics.clout_explanation = explanations_dict['clout']
+        if 'authenticity' in explanations_dict:
+            metrics.authenticity_explanation = explanations_dict['authenticity']
+        if 'certainty' in explanations_dict:
+            metrics.certainty_explanation = explanations_dict['certainty']
+    
+    if transcript_count is not None:
+        metrics.transcript_count = transcript_count
+    if llm_model is not None:
+        metrics.llm_model = llm_model
+    
+    metrics.updated_at = datetime.utcnow()
+    db.session.commit()
+    return metrics
+
+def delete_llm_metrics(id):
+    """Delete LLM metrics by id"""
+    db.session.query(LLMMetrics).filter(LLMMetrics.id == id).delete(synchronize_session='fetch')
+    db.session.commit()
+    return True
 
 # -------------------------
 # User

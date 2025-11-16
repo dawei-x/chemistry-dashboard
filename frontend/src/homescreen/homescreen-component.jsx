@@ -12,6 +12,7 @@ import trending from '../assets/img/icon-trending-up.svg'
 import settings from '../assets/img/settings.svg'
 import question from '../assets/img/question.svg'
 import logouticon from '../assets/img/logout.svg'
+import ragicon from '../assets/img/icon-discover.svg'
 
 function Menus(props) {
   return (
@@ -52,6 +53,7 @@ function HomeScreen(props) {
       </div>
       <img alt="speaker" className="flex w-36.5 h-36.5 mt-13 mb-12.5" src={speaker} />
       <Menus menuIcon={recordicon} menuName="Discussions" route={navigate} path='/sessions' />
+      <Menus menuIcon={ragicon} menuName="RAG Discovery" route={navigate} path='/discover' />
       <Menus menuIcon={wordlist} menuName="Keyword" route={navigate} path='/keyword-lists' />
       <Menus menuIcon={pod} menuName="Pods" route={navigate} path='/pods' />
       <Menus menuIcon={trending} menuName="Topic Modeling" route={navigate} path='/topic-models' />
