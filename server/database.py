@@ -442,19 +442,34 @@ def create_session(user_id, keyword_list_id, topic_model_id, name="Unnamed", fol
 def delete_session(session_id):
     session_to_delete = get_sessions(id=session_id, active=True)
     if session_to_delete:
-        return False
-    
-    sub_query = db.session.query(Transcript.id).\
-        filter(Transcript.session_device_id == SessionDevice.id).\
-        filter(SessionDevice.session_id == session_id).subquery()
-        
-    db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id.in_(sub_query)).delete(synchronize_session='fetch')
-    db.session.query(Keyword).filter(Keyword.session_id == session_id).delete()
-    db.session.query(Transcript).filter(Transcript.id.in_(sub_query)).delete(synchronize_session='fetch')
-    db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).delete()
-    db.session.query(Session).filter(Session.id == session_id).delete()
-    db.session.commit()
-    return True
+        return False, "Cannot delete an active session"
+
+    try:
+        sub_query = db.session.query(Transcript.id).\
+            filter(Transcript.session_device_id == SessionDevice.id).\
+            filter(SessionDevice.session_id == session_id).subquery()
+
+        # Get session devices to delete their LLMMetrics
+        session_devices = db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).all()
+
+        # Delete related data in correct order to avoid foreign key constraints
+        db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id.in_(sub_query)).delete(synchronize_session='fetch')
+        db.session.query(Keyword).filter(Keyword.session_id == session_id).delete()
+        db.session.query(Transcript).filter(Transcript.id.in_(sub_query)).delete(synchronize_session='fetch')
+
+        # Delete LLMMetrics before deleting SessionDevice (foreign key constraint)
+        for device in session_devices:
+            db.session.query(LLMMetrics).filter(LLMMetrics.session_device_id == device.id).delete()
+
+        # Now safe to delete SessionDevice and Session
+        db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).delete()
+        db.session.query(Session).filter(Session.id == session_id).delete()
+
+        db.session.commit()
+        return True, "Session deleted successfully"
+    except Exception as e:
+        db.session.rollback()
+        return False, str(e)
 
 def update_session(session_id, name=None, folder_id=None):
     session = get_sessions(id=session_id)

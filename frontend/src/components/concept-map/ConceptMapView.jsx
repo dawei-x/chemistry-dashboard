@@ -19,7 +19,7 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
 
   const [transcriptPanel, setTranscriptPanel] = useState(null);
   const [panelTranscripts, setPanelTranscripts] = useState([]);
-  
+
   // State management
   const [conceptData, setConceptData] = useState({ nodes: [], edges: [] });
   const [clusters, setClusters] = useState([]);
@@ -62,6 +62,17 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     const B = (num & 0x0000FF) - amt;
     return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
   }, []);
+
+  // Utility functions for organic growth animation
+  const findRootNodes = useCallback((nodes, edges) => {
+    // Root nodes are those with no incoming edges
+    const targetIds = new Set(edges.map(e => e.target || e.data?.target));
+    return nodes.filter(node => {
+      const nodeId = node.id || node.data?.id;
+      return !targetIds.has(nodeId);
+    });
+  }, []);
+
 
   // Format edge labels
   const formatEdgeLabel = useCallback((type) => {
@@ -280,12 +291,27 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     
     socket.on('concept_update', (data) => {
       console.log('Received concept update:', data);
-      setConceptData(data);
-      setDisplayData({
-        nodeCount: data.nodes.length,
-        edgeCount: data.edges.length,
-        discourseType: data.discourse_type || 'exploratory'
+
+      // MERGE new nodes and edges with existing ones instead of replacing
+      setConceptData(prevData => {
+        // Handle initial case where prevData might not exist
+        if (!prevData || !prevData.nodes) {
+          return data;
+        }
+
+        return {
+          nodes: [...prevData.nodes, ...(data.nodes || [])],
+          edges: [...prevData.edges, ...(data.edges || [])],
+          discourse_type: data.discourse_type || prevData.discourse_type || 'exploratory'
+        };
       });
+
+      // Update display counts incrementally instead of replacing
+      setDisplayData(prevDisplay => ({
+        nodeCount: (prevDisplay.nodeCount || 0) + (data.nodes?.length || 0),
+        edgeCount: (prevDisplay.edgeCount || 0) + (data.edges?.length || 0),
+        discourseType: data.discourse_type || prevDisplay.discourseType || 'exploratory'
+      }));
     });
     
     return () => {
@@ -296,13 +322,104 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     };
   }, [sessionDeviceId]);
 
+  // Build elements without adding them to cy (for incremental updates)
+  const buildClusteredElements = useCallback(() => {
+    const elements = [];
+    const clusterPositions = calculateClusterPositions(clusters.length);
 
-  // Build and render the graph
+    clusters.forEach((cluster, index) => {
+      const isCollapsed = !expandedClusterIds.has(cluster.id);
+      const clusterColor = getClusterColor(index);
+
+      // Add cluster parent node
+      elements.push({
+        data: {
+          id: `cluster_${cluster.id}`,
+          label: cluster.name || `Cluster ${index + 1}`,
+          isCluster: true,
+          collapsed: isCollapsed,
+          color: clusterColor,
+          borderColor: darkenColor(clusterColor, 0.3),
+          nodeCount: cluster.node_count || cluster.nodes?.length || 0,
+          summary: cluster.summary
+        },
+        position: clusterPositions[index],
+        classes: isCollapsed ? 'collapsed-cluster' : 'expanded-cluster'
+      });
+
+      if (!isCollapsed && cluster.nodes) {
+        // Add individual nodes when expanded
+        cluster.nodes.forEach((node, nodeIndex) => {
+          const nodeColor = nodeColors[node.type] || nodeColors.default;
+          elements.push({
+            data: {
+              id: node.id,
+              parent: `cluster_${cluster.id}`,
+              label: node.text,
+              type: node.type,
+              color: nodeColor,
+              timestamp: node.timestamp || 0
+            }
+          });
+        });
+      }
+    });
+
+    // Add edges between clusters
+    if (conceptData.edges) {
+      conceptData.edges.forEach(edge => {
+        elements.push({
+          data: {
+            id: `edge_${edge.source}_${edge.target}`,
+            source: edge.source,
+            target: edge.target,
+            label: formatEdgeLabel(edge.type)
+          }
+        });
+      });
+    }
+
+    return elements;
+  }, [clusters, expandedClusterIds, conceptData.edges, nodeColors, formatEdgeLabel, darkenColor]);
+
+  const buildFullViewElements = useCallback(() => {
+    const elements = [];
+
+    // Add all nodes
+    conceptData.nodes.forEach(node => {
+      const nodeColor = nodeColors[node.type] || nodeColors.default;
+      elements.push({
+        data: {
+          id: node.id,
+          label: node.text,
+          type: node.type,
+          color: nodeColor,
+          timestamp: node.timestamp || 0
+        }
+      });
+    });
+
+    // Add all edges
+    conceptData.edges.forEach(edge => {
+      elements.push({
+        data: {
+          id: `edge_${edge.source}_${edge.target}`,
+          source: edge.source,
+          target: edge.target,
+          label: formatEdgeLabel(edge.type)
+        }
+      });
+    });
+
+    return elements;
+  }, [conceptData.nodes, conceptData.edges, nodeColors, formatEdgeLabel]);
+
+  // Build and render the graph - simplified version without complex animation
   useEffect(() => {
     const container = isExpanded ? expandedContainerRef.current : containerRef.current;
     if (!container || !conceptData.nodes || conceptData.nodes.length === 0) return;
 
-    // Initialize or update Cytoscape
+    // Initialize Cytoscape if not already done
     if (!cyRef.current) {
       cyRef.current = initCytoscape(container);
     } else {
@@ -310,6 +427,8 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     }
 
     const cy = cyRef.current;
+
+    // Always do a full re-render to ensure all nodes and edges are properly displayed
     cy.elements().remove();
 
     if (viewMode === 'clustered' && clusters.length > 0) {

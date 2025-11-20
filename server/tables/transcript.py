@@ -3,7 +3,7 @@ from app import db
 class Transcript(db.Model):
     __tablename__ = 'transcript'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    session_device_id = db.Column(db.Integer, db.ForeignKey('session_device.id'), nullable=False)
+    session_device_id = db.Column(db.Integer, db.ForeignKey('session_device.id', ondelete='CASCADE'), nullable=False)
     start_time = db.Column(db.Integer, nullable=False)
     length = db.Column(db.Integer, nullable=False)
     question = db.Column(db.Boolean, nullable=False)

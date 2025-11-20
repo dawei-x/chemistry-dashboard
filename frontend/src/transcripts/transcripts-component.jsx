@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useOutletContext,useParams, useSearchParams } from 'react-router-dom';
+import { useNavigate, useOutletContext, useParams, useSearchParams, useLocation } from 'react-router-dom';
 import { similarityToRGB } from '../globals';
 import {TranscriptComponentPage} from './html-pages'
 import { useD3 } from '../myhooks/custom-hooks';
@@ -31,17 +31,33 @@ function TranscriptsComponent(){
   const [showDoA,setShowDoA] = useState(false);
   const [reload, setReload] = useState(false)
   const [highlightRange, setHighlightRange] = useState(null);
-  const [activeSessionService, setActiveSessionService] = useOutletContext();
-  const { sessionDeviceId } = useParams(); 
+  const [isLoading, setIsLoading] = useState(false);
+  const [fetchError, setFetchError] = useState(null);
+  const location = useLocation();
+  const params = useParams();
   const [searchParam, setSearchParam] = useSearchParams();
-  const navigate = useNavigate()
-  
+  const navigate = useNavigate();
+
+  // Check if we're in device-only mode (new route) vs session mode (nested route)
+  const isDeviceOnlyMode = location.pathname.startsWith('/transcripts/device/');
+
+  // Always call useOutletContext unconditionally (returns undefined if not in outlet)
+  const contextValue = useOutletContext();
+
+  // Use context only if available and not in device-only mode
+  const [activeSessionService, setActiveSessionService] = isDeviceOnlyMode
+    ? [null, null]
+    : (contextValue || [null, null]);
+
+  // Get the device ID from the appropriate param based on mode
+  const sessionDeviceId = isDeviceOnlyMode ? params.deviceId : params.sessionDeviceId;
+
   const colorTopicDict = ['hsl(0, 100%, 100%)', 'hsl(151, 58%, 87%)', 'hsl(109, 67%, 92%)', 'hsl(49, 94%, 93%)', 'hsl(34, 100%, 89%)', 'hsl(30, 79%, 85%)'];
 
-  
+
   useEffect(() => {
   let transcriptSub; // Local variable to store subscription
-  
+
   const index = searchParam.get('index');
   if(index !== undefined){
     setTranscriptIndex(parseInt(index, 10))
@@ -56,7 +72,7 @@ function TranscriptsComponent(){
       end: parseFloat(data.timestamp) + 15
     });
   }
-  
+
   const highlightTime = searchParam.get('highlight_time') || sessionStorage.getItem('highlightTime');
   if (highlightTime) {
     sessionStorage.removeItem('highlightTime');
@@ -69,18 +85,59 @@ function TranscriptsComponent(){
   }
 
   if(sessionDeviceId !== undefined){
-    if (activeSessionService && activeSessionService.getSession) {
-      try {
-        const sessSub = activeSessionService.getSession();
-        if(sessSub !== undefined) {
-          setSession(sessSub);
-        }
+    // Handle device-only mode (from RAG search)
+    if (isDeviceOnlyMode) {
+      console.log('TranscriptsComponent: Device-only mode, fetching transcripts via public API for device:', sessionDeviceId);
 
-        const deviceSub = activeSessionService.getSessionDevice(sessionDeviceId)
-        if(deviceSub !== undefined){
-          setSessionDevice(deviceSub);
-        }
-        if (transcripts.length <= 0) {
+      // Set minimal session/device info for display
+      setSession({ id: 'N/A', name: 'Device View' });
+      setSessionDevice({ id: sessionDeviceId, name: `Device ${sessionDeviceId}` });
+      setIsLoading(true);
+      setFetchError(null);
+
+      // Use the public endpoint that doesn't require authentication
+      fetch(`/api/v1/devices/${sessionDeviceId}/transcripts/client`)
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}: Failed to fetch transcripts`);
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (Array.isArray(data)) {
+            const sorted = data.sort((a, b) => a.start_time - b.start_time);
+            setTranscripts(sorted);
+            setReload(true);
+            setIsLoading(false);
+            console.log(`TranscriptsComponent: Successfully loaded ${sorted.length} transcripts from public API`);
+          } else {
+            throw new Error('Invalid response format: expected array');
+          }
+        })
+        .catch(err => {
+          console.error('Failed to load transcripts from public API:', err);
+          setFetchError(err.message);
+          setIsLoading(false);
+          setTranscripts([]);
+          setReload(true);
+        });
+    }
+    // Handle normal session mode (nested route)
+    else {
+      // Try using activeSessionService first (preferred for real-time updates)
+      if (activeSessionService && activeSessionService.getSession) {
+        try {
+          const sessSub = activeSessionService.getSession();
+          if(sessSub !== undefined) {
+            setSession(sessSub);
+          }
+
+          const deviceSub = activeSessionService.getSessionDevice(sessionDeviceId)
+          if(deviceSub !== undefined){
+            setSessionDevice(deviceSub);
+          }
+
+          // Subscribe to real-time transcript updates
           transcriptSub = activeSessionService.getTranscripts();
           if (transcriptSub && transcriptSub.subscribe) {
             transcriptSub.subscribe(e => {
@@ -90,7 +147,7 @@ function TranscriptsComponent(){
               const ids = e.map(t => t.id);
               const uniqueIds = [...new Set(ids)];
               console.log("Total IDs:", ids.length, "Unique IDs:", uniqueIds.length);
-              
+
               if (Object.keys(e).length !== 0) {
                 const data = e.filter(t => t.session_device_id === parseInt(sessionDeviceId, 10))
                     .sort((a, b) => (a.start_time > b.start_time) ? 1 : -1)
@@ -99,27 +156,50 @@ function TranscriptsComponent(){
               }
             })
           }
+        } catch (err) {
+          console.error('Service access error:', err);
         }
-      } catch (err) {
-        console.error('Service access error:', err);
       }
-    } else {
-      const pathParts = window.location.pathname.split('/');
-      const sessionId = pathParts[pathParts.indexOf('sessions') + 1];
-      
-      setSession({id: sessionId});
-      setSessionDevice({id: sessionDeviceId, name: `Device ${sessionDeviceId}`});
-      
-      fetch(`/api/v1/sessions/${sessionId}/devices/${sessionDeviceId}/transcripts`)
-        .then(res => res.json())
-        .then(data => {
-          if (Array.isArray(data)) {
-            const sorted = data.sort((a, b) => a.start_time - b.start_time);
-            setTranscripts(sorted);
+
+      // Fetch from API if no activeSessionService (page refresh scenario)
+      // or if WebSocket hasn't provided transcripts yet
+      if (!activeSessionService || transcripts.length === 0) {
+        const pathParts = window.location.pathname.split('/');
+        const sessionId = pathParts[pathParts.indexOf('sessions') + 1];
+
+        console.log('TranscriptsComponent: Fetching transcripts from API (WebSocket not loaded yet)');
+        setSession({id: sessionId});
+        setSessionDevice({id: sessionDeviceId, name: `Device ${sessionDeviceId}`});
+        setIsLoading(true);
+        setFetchError(null);
+
+        fetch(`/api/v1/sessions/${sessionId}/devices/${sessionDeviceId}/transcripts`)
+          .then(res => {
+            if (!res.ok) {
+              throw new Error(`HTTP ${res.status}: Failed to fetch transcripts`);
+            }
+            return res.json();
+          })
+          .then(data => {
+            if (Array.isArray(data)) {
+              const sorted = data.sort((a, b) => a.start_time - b.start_time);
+              setTranscripts(sorted);
+              setReload(true);
+              setIsLoading(false);
+              console.log(`TranscriptsComponent: Successfully loaded ${sorted.length} transcripts from API`);
+            } else {
+              throw new Error('Invalid response format: expected array');
+            }
+          })
+          .catch(err => {
+            console.error('Failed to load transcripts:', err);
+            setFetchError(err.message);
+            setIsLoading(false);
+            // Set empty transcripts array so page doesn't stay completely blank
+            setTranscripts([]);
             setReload(true);
-          }
-        })
-        .catch(err => console.error('Failed to load transcripts:', err));
+          });
+      }
     }
   }
 
@@ -133,7 +213,7 @@ function TranscriptsComponent(){
       }
     }
   }
-}, [sessionDeviceId]) // Add sessionDeviceId as dependency
+}, [sessionDeviceId, activeSessionService, isDeviceOnlyMode]) // Re-run when any of these change
 
 
 useEffect(()=>{
@@ -147,6 +227,29 @@ useEffect(()=>{
     createDisplayTranscripts();
   }
 },[trigger])
+
+// Auto-scroll to highlighted transcript when navigating from RAG search
+useEffect(() => {
+  if (highlightRange && displayTranscripts.length > 0 && !hasScrolled) {
+    // Find first transcript in highlight range
+    const highlightedTranscript = displayTranscripts.find(t =>
+      t.start_time >= highlightRange.start &&
+      t.start_time <= highlightRange.end
+    );
+
+    if (highlightedTranscript) {
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        const element = document.getElementById(`${highlightedTranscript.id}`);
+        if (element) {
+          console.log('TranscriptsComponent: Scrolling to highlighted transcript:', highlightedTranscript.id);
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setHasScrolled(true);
+        }
+      }, 100);
+    }
+  }
+}, [displayTranscripts, highlightRange, hasScrolled]);
 
 //console.log(transcripts, displayTranscripts, 'states ... ')
 const createDisplayTranscripts = ()=> {
@@ -208,7 +311,13 @@ const createDisplayTranscripts = ()=> {
   }
 
   const navigateToSession = ()=> {
-    navigate('/sessions/' + session.id + '/pods/' + sessionDeviceId);
+    // In device-only mode, navigate back to discover page
+    if (isDeviceOnlyMode) {
+      navigate('/discover');
+    } else {
+      // In normal session mode, navigate to pod details
+      navigate('/sessions/' + session.id + '/pods/' + sessionDeviceId);
+    }
   }
   
   const toggleKeywords = ()=> {

@@ -226,8 +226,8 @@ function RagSearchComponent() {
                     </span>
                   </div>
                   
-                  <a 
-                    href={`/sessions/${Math.floor(result.metadata.session_device_id/10)}/pods/${result.metadata.session_device_id}/transcripts?highlight_time=${result.metadata.start_time}`}
+                  <a
+                    href={`/transcripts/device/${result.metadata.session_device_id}?highlight_time=${result.metadata.start_time}`}
                     className="view-link"
                   >
                     View in context →

@@ -118,6 +118,25 @@ def receive_concept_update():
                 ).first()
                 
                 if not existing:
+                    # Check for text-based duplicates as safety net
+                    node_text = node_data.get('text', '').strip()
+                    if node_text:
+                        text_duplicate = ConceptNode.query.filter_by(
+                            concept_session_id=concept_session.id,
+                            text=node_text
+                        ).first()
+
+                        if text_duplicate:
+                            logging.info(f"Skipping duplicate concept text: '{node_text[:50]}...' (existing ID: {text_duplicate.id}, attempted ID: {node_id})")
+
+                            # Update any edges that reference this duplicate to point to the existing node
+                            for edge_data in edges:
+                                if edge_data.get('source') == node_id:
+                                    edge_data['source'] = text_duplicate.id
+                                if edge_data.get('target') == node_id:
+                                    edge_data['target'] = text_duplicate.id
+                            continue
+
                     # Map 'type' to 'node_type' to match the schema
                     speaker_value = node_data.get('speaker') or node_data.get('speaker_id')
                     if speaker_value == 'Unknown' or speaker_value == '' or not speaker_value:

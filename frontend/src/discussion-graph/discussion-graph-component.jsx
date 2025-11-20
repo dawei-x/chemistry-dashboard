@@ -61,7 +61,7 @@ function DiscussionGraphComponent() {
     
     return () => {
       subscriptions.map(sub => {
-          if (sub.closed) {
+          if (!sub.closed) {  // Fix: Only unsubscribe if NOT closed
               sub.unsubscribe()
           }
       });

@@ -1,27 +1,48 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, Outlet } from 'react-router-dom';
-import { ActiveSessionService } from '../services/active-session-service';
+import { getActiveSessionService } from '../services/active-session-singleton';
 import { AppSpinner } from "../spinner/spinner-component"
 
 
 function SessionManagerComponent() {
 
-  const [activeSessionService, setActiveSessionService] = useState(new ActiveSessionService());
+  // Get the singleton service instance
+  const activeSessionService = getActiveSessionService();
+
   const [initialized, setInitialized] = useState(false)
   const { sessionId } = useParams();
 
-
   useEffect(() => {
     if (sessionId !== undefined) {
-      activeSessionService.initialize(sessionId,setInitialized);
+      console.log('SessionManagerComponent: Setting up for sessionId:', sessionId);
+
+      // Check if service is already initialized with data
+      if (activeSessionService.sessionId === sessionId &&
+          activeSessionService.initialized &&
+          activeSessionService.getSession() !== null) {
+        console.log('SessionManagerComponent: Service already initialized with data');
+        setInitialized(true);
+      } else {
+        // Initialize the service for this session
+        activeSessionService.initialize(sessionId, (ready) => {
+          console.log('SessionManagerComponent: Service initialized via callback:', ready);
+          setInitialized(ready);
+        });
+      }
     }
 
-    //THROWS ERROR AROUND HERE
+    // Cleanup: ONLY when the entire component unmounts (leaving the session entirely)
     return () => {
-      activeSessionService.close();
+      // We're unmounting the SessionManagerComponent entirely
+      // This happens when navigating away from /sessions/:id/* routes
+      console.log('SessionManagerComponent: Component unmounting');
+      // Don't close here - let the service persist
     }
-  }, [])
+  }, [sessionId]) // Only re-run when sessionId changes
 
+
+  // Stabilize the context value to prevent unnecessary re-renders
+  const contextValue = useMemo(() => [activeSessionService, () => {}], [activeSessionService]);
 
   if (!initialized) {
     return (
@@ -32,7 +53,7 @@ function SessionManagerComponent() {
   }
 
   return (
-    <Outlet context={[activeSessionService, setActiveSessionService]}/>
+    <Outlet context={contextValue}/>
   );
 
 }

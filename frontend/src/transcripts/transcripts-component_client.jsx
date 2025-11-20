@@ -12,18 +12,34 @@ function TranscriptsComponentClient(props){
   const [showKeywords, setShowKeywords] = useState(true);
   const [showDoA,setShowDoA] = useState(false);
   const [reload,setReload] = useState(false);
+  const [deviceId, setDeviceId] = useState(null);
   const navigate = useNavigate()
   const sessionService = new SessionService()
-  
-  
+
+
   useEffect(() => {
     let intervalLoad
-    if ( props.sessionDevice !== null) {
-        fetchTranscript(props.sessionDevice.id)
+    let actualDeviceId = null;
+
+    // Try to get device ID from props first
+    if (props.sessionDevice !== null) {
+        actualDeviceId = props.sessionDevice.id;
+    } else {
+        // Fallback: try to restore from sessionStorage
+        const savedDeviceId = sessionStorage.getItem('byod_device_id');
+        if (savedDeviceId) {
+            console.log('TranscriptsComponentClient: Restoring device ID from sessionStorage');
+            actualDeviceId = parseInt(savedDeviceId, 10);
+        }
+    }
+
+    if (actualDeviceId !== null) {
+        setDeviceId(actualDeviceId);
+        fetchTranscript(actualDeviceId);
 
         intervalLoad = setInterval(() => {
-            fetchTranscript(props.sessionDevice.id)
-        }, 2000)
+            fetchTranscript(actualDeviceId);
+        }, 2000);
     }
 
     return () => {
@@ -135,9 +151,12 @@ const createDisplayTranscripts = ()=> {
     props.setParentCurrentForm("")
   }
 
+  // Create a fallback session device object if props.sessionDevice is null
+  const displaySessionDevice = props.sessionDevice || (deviceId ? { id: deviceId, name: `Device ${deviceId}` } : null);
+
   return(
     <TranscriptComponentPage
-      sessionDevice = {props.sessionDevice}
+      sessionDevice = {displaySessionDevice}
       currentForm = {currentForm}
       navigateToSession = {navigateToSession}
       displayTranscripts = { displayTranscripts}

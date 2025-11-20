@@ -52,6 +52,7 @@ function PageRouter() {
                 <Route path='/settings' element={<ProtectedRoute component={SettingsComponent}/> } />
                 <Route path="/feedback-form/:sessionId" element={<SessionFeedbackForm />} />
                 <Route path='/discover' element={<ProtectedRoute component={RagSearchComponent} />}/>
+                <Route path='/transcripts/device/:deviceId' element={<TranscriptsComponent />} />
             </Routes>
         </BrowserRouter>
     )

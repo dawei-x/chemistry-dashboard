@@ -55,11 +55,16 @@ def update_session(session_id, user, **kwargs):
 @wrappers.verify_login(public=True)
 @wrappers.verify_session_access
 def delete_session(session_id, **kwargs):
-    success = database.delete_session(session_id)
-    if success:
-        return json_response()
-    else:
-        return json_response({'message': 'Failed to delete session.'}, 400)
+    try:
+        success, message = database.delete_session(session_id)
+        if success:
+            return json_response({'success': True, 'message': message})
+        else:
+            return json_response({'success': False, 'message': message}, 400)
+    except Exception as e:
+        import logging
+        logging.error(f"Error deleting session {session_id}: {str(e)}")
+        return json_response({'success': False, 'message': 'Failed to delete session'}, 500)
 
 @api_routes.route('/api/v1/sessions', methods=['POST'])
 @wrappers.verify_login(public=True)

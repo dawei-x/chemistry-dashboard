@@ -20,11 +20,23 @@ export class ActiveSessionService {
     initialized = false
 
     initialize(sessionId, setInitialized) {
-        if (this.sessionId === sessionId) {
-            return
+        console.log('ActiveSessionService.initialize called for sessionId:', sessionId, 'current:', this.sessionId, 'initialized:', this.initialized);
+
+        // If already initialized for this session AND we have data, just set the flag and return
+        if (this.sessionId === sessionId && this.initialized && this.sessionSource.getValue() !== null) {
+            console.log('ActiveSessionService: Already initialized with data, returning early');
+            if (setInitialized) setInitialized(true);
+            return;
         }
-        this.close()
+
+        // Only close if switching to a DIFFERENT session
+        if (this.sessionId !== null && this.sessionId !== sessionId) {
+            console.log('ActiveSessionService: Closing for session change');
+            this.close();
+        }
+
         this.sessionId = sessionId
+        this.initialized = false // Reset initialized flag to ensure we fetch data
         // Call APIs.
         const fetchRes = this.sessionService.getSession(sessionId)
         fetchRes.then(
@@ -77,6 +89,7 @@ export class ActiveSessionService {
         this.socket = this.socketService.createSocket("session", this.sessionId)
         // Update device.
         this.socket.on("device_update", (e) => {
+            if (!this.initialized) return; // Guard against race conditions
             const updatedDevice = SessionDeviceModel.fromJson(JSON.parse(e))
             const currentDevices = this.sessionDeviceSource.getValue()
             const index = currentDevices.findIndex(
@@ -93,6 +106,7 @@ export class ActiveSessionService {
 
         //  Remove device
         this.socket.on("device_removed", (e) => {
+            if (!this.initialized) return; // Guard against race conditions
             const removedDeviceId = JSON.parse(e)["id"]
             const currentDevices = this.sessionDeviceSource
                 .getValue()
@@ -107,6 +121,7 @@ export class ActiveSessionService {
 
         // Update session.
         this.socket.on("session_update", (e) => {
+            if (!this.initialized) return; // Guard against race conditions
             this.sessionSource.next(SessionModel.fromJson(JSON.parse(e)))
         })
 
@@ -117,15 +132,27 @@ export class ActiveSessionService {
 
         // Update transcripts.
         this.socket.on("transcript_update", (e) => {
-          const data = JSON.parse(e);
+            if (!this.initialized) return; // Guard against race conditions
+            const data = JSON.parse(e);
             const currentTranscripts = this.transcriptSource.getValue();
             console.log(`BEFORE: ${currentTranscripts.length} transcripts, adding ID ${data.id}`);
-            currentTranscripts.push(TranscriptModel.fromJson(data));
+
+            // Check if transcript already exists to prevent duplicates
+            // Use Number() to normalize IDs for comparison (handles both string and number IDs)
+            const existingIndex = currentTranscripts.findIndex(t => Number(t.id) === Number(data.id));
+            if (existingIndex === -1) {
+                currentTranscripts.push(TranscriptModel.fromJson(data));
+            } else {
+                // Update existing transcript
+                currentTranscripts[existingIndex] = TranscriptModel.fromJson(data);
+            }
+
             this.transcriptSource.next(currentTranscripts);
         });
 
         // Initial digest of transcripts.
         this.socket.on('transcript_digest', e => {
+            if (!this.initialized) return; // Guard against race conditions
             const data = JSON.parse(e);
             const transcripts = [];
             for (const transcript of data) {
@@ -136,8 +163,9 @@ export class ActiveSessionService {
 
         // Update transcripts and speaker metrics.
         this.socket.on("transcript_metrics_update", (e) => {
+            if (!this.initialized) return; // Guard against race conditions
             const data = JSON.parse(e)
-            console.log(`METRICS UPDATE: adding transcript ID ${data.transcript.id}`);
+            console.log(`METRICS UPDATE: adding/updating transcript ID ${data.transcript.id}`);
 
             const speaker_metrics = SpeakerMetricsModel.fromJsonList(
                 data["speaker_metrics"],
@@ -148,12 +176,22 @@ export class ActiveSessionService {
             )
             const currentTranscripts = this.transcriptSource.getValue()
 
-            currentTranscripts.push(transcript_model)
+            // Check if transcript already exists to prevent duplicates
+            // Use Number() to normalize IDs for comparison (handles both string and number IDs)
+            const existingIndex = currentTranscripts.findIndex(t => Number(t.id) === Number(data.transcript.id));
+            if (existingIndex === -1) {
+                currentTranscripts.push(transcript_model);
+            } else {
+                // Update existing transcript with new metrics
+                currentTranscripts[existingIndex] = transcript_model;
+            }
+
             this.transcriptSource.next(currentTranscripts)
         })
 
         // Initial digest of transcripts and speaker metrics.
         this.socket.on("transcript_metrics_digest", (e) => {
+            if (!this.initialized) return; // Guard against race conditions
             const data = JSON.parse(e)
             const transcripts = this.transcriptSource.getValue()
             for (const transcript_metrics of data) {
@@ -164,18 +202,33 @@ export class ActiveSessionService {
                     transcript_metrics["transcript"],
                     speaker_metrics,
                 )
-                transcripts.push(transcript_model)
+
+                // Check if transcript already exists to prevent duplicates
+                // Use Number() to normalize IDs for comparison (handles both string and number IDs)
+                const existingIndex = transcripts.findIndex(t => Number(t.id) === Number(transcript_model.id));
+                if (existingIndex === -1) {
+                    transcripts.push(transcript_model);
+                } else {
+                    // Update existing transcript with new metrics
+                    transcripts[existingIndex] = transcript_model;
+                }
             }
             this.transcriptSource.next(transcripts)
         })
     }
 
     close() {
+        // First mark as not initialized to prevent socket events from firing
+        this.initialized = false
+
+        // Then disconnect socket and remove all listeners
         if (this.socket != null) {
             this.socket.off();
             this.socket.disconnect()
+            this.socket = null
         }
-        this.initialized = false
+
+        // Finally reset state
         this.sessionId = null
         this.sessionSource.next(null)
         this.sessionDeviceSource.next([])
@@ -211,9 +264,9 @@ export class ActiveSessionService {
             }
         })
 
-        return this.transcriptSource
+        return this.transcriptSource.asObservable()
     }
     getTranscripts() {
-        return this.transcriptSource
+        return this.transcriptSource.asObservable()
     }
 }

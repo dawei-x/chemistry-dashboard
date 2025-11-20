@@ -243,7 +243,7 @@ def extract_concepts():
         recent_concepts_text = ""
         if context.get('recent_concepts'):
             concepts_list = [f"{c.get('text')} ({c.get('type')})" for c in context['recent_concepts']]
-            recent_concepts_text = f"\nPrevious concepts: {', '.join(concepts_list)}"
+            recent_concepts_text = f"\n\n**ALREADY EXTRACTED CONCEPTS (DO NOT EXTRACT THESE AGAIN):**\n{', '.join(concepts_list)}\n\n**IMPORTANT:** The above concepts are provided for context only. You may create edges TO them, but DO NOT extract them as new nodes."
         
         if not speaker_text.strip():
             logging.warning("No transcript text to process for concept extraction")
@@ -253,17 +253,19 @@ def extract_concepts():
                 "discourse_type": "exploratory"
             }), 200
         
-        prompt = f"""Extract a comprehensive knowledge graph from this discussion. Be thorough - capture EVERY meaningful idea.
+        prompt = f"""Extract a comprehensive knowledge graph from this discussion. Be thorough - capture EVERY meaningful idea FROM THE NEW DISCUSSION ONLY.
 
-Discussion:{speaker_text}
+NEW DISCUSSION TO PROCESS:{speaker_text}
 {recent_concepts_text}
 
 EXTRACTION RULES:
-1. Extract AT LEAST one concept for every 2-3 sentences spoken;
-2. Include ALL of: main ideas, sub-points, examples, questions, clarifications;
-3. Keep concept text concise but complete (3-15 words is fine);
-4. Don't oversummarize - "multimodal learning analytics" is better than just "analytics";
-5. **speaker**: The speaker ID (e.g., 1, 2, "Unknown") who said the concept. This ID comes from the "Speaker {{ID}}" prefix.
+1. Extract concepts ONLY from the "NEW DISCUSSION TO PROCESS" section above;
+2. DO NOT re-extract any concepts listed in "ALREADY EXTRACTED CONCEPTS" section;
+3. Extract AT LEAST one concept for every 2-3 sentences in the NEW discussion;
+4. Include ALL of: main ideas, sub-points, examples, questions, clarifications from NEW discussion;
+5. Keep concept text concise but complete (3-15 words is fine);
+6. Don't oversummarize - "multimodal learning analytics" is better than just "analytics";
+7. **speaker**: The speaker ID (e.g., 1, 2, "Unknown") who said the concept. This ID comes from the "Speaker {{ID}}" prefix.
 
 CONCEPT TYPES to extract:
 - Core ideas and claims (type: "idea")
@@ -311,9 +313,11 @@ Return JSON:
                 {
                     "role": "system",
                     "content": """You are a thorough knowledge extractor. Your goal is to capture the richness of human discussion.
+                    CRITICAL RULE: Only extract NEW concepts from the NEW DISCUSSION section. Never re-extract concepts that are listed as ALREADY EXTRACTED.
                     Extract MORE concepts rather than fewer. Include minor points, asides, and elaborations.
                     Every meaningful utterance should produce at least one concept.
-                    Don't oversummarize - preserve the specific ideas being discussed."""
+                    Don't oversummarize - preserve the specific ideas being discussed.
+                    You may create edges/relationships TO already extracted concepts, but DO NOT create new nodes for them."""
                 },
                 {
                     "role": "user",

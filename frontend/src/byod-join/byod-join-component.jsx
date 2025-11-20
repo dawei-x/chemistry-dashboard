@@ -98,6 +98,44 @@ function JoinPage() {
 
     useEffect(() => {
         socketRef.current = io();
+
+        // Restore BYOD session data from sessionStorage on page refresh
+        const savedKey = sessionStorage.getItem('byod_processing_key');
+        const savedSessionId = sessionStorage.getItem('byod_session_id');
+        const savedDeviceId = sessionStorage.getItem('byod_device_id');
+
+        if (savedKey && savedSessionId && savedDeviceId) {
+            console.log('Restoring BYOD session from sessionStorage');
+            // Restore the session data
+            setKey(savedKey);
+
+            const parsedSessionId = parseInt(savedSessionId, 10);
+            const parsedDeviceId = parseInt(savedDeviceId, 10);
+
+            // Fetch session and device data from API
+            sessionService.getSession(parsedSessionId).then(
+                (response) => {
+                    if (response.status === 200) {
+                        response.json().then((jsonObj) => {
+                            setSession(SessionModel.fromJson(jsonObj));
+                        });
+                    }
+                },
+                (error) => console.error('Failed to restore session:', error)
+            );
+
+            sessionService.getSessionDevice(parsedSessionId, parsedDeviceId).then(
+                (response) => {
+                    if (response.status === 200) {
+                        response.json().then((jsonObj) => {
+                            setSessionDevice(SessionDeviceModel.fromJson(jsonObj));
+                        });
+                    }
+                },
+                (error) => console.error('Failed to restore session device:', error)
+            );
+        }
+
         return () => {
             if (socketRef.current) {
                 socketRef.current.disconnect();
@@ -310,6 +348,11 @@ function JoinPage() {
             setSession(null)
             setSessionDevice(null)
             setKey(null)
+
+            // Clear sessionStorage on permanent disconnect
+            sessionStorage.removeItem('byod_processing_key');
+            sessionStorage.removeItem('byod_session_id');
+            sessionStorage.removeItem('byod_device_id');
         }
 
         if (wakeLock) releaseWakeLock()
@@ -576,7 +619,13 @@ function JoinPage() {
                         setSpeakers(
                             SpeakerModel.fromJsonList(jsonObj["speakers"]),
                         )
-                        setKey(jsonObj.key);                        
+                        setKey(jsonObj.key);
+
+                        // Persist BYOD session data to sessionStorage for refresh recovery
+                        sessionStorage.setItem('byod_processing_key', jsonObj.key);
+                        sessionStorage.setItem('byod_session_id', jsonObj["session"].id.toString());
+                        sessionStorage.setItem('byod_device_id', jsonObj["session_device"].id.toString());
+
                         setConstraintObj(constraint)
                         setPcode(passcode)
                         setJoinwith(joinwith)

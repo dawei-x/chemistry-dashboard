@@ -1,7 +1,7 @@
 import { SessionService } from "../services/session-service";
 import { SpeakerModel } from "../models/speaker";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useOutletContext, useParams } from "react-router-dom";
+import { useNavigate, useOutletContext, useParams, useLocation } from "react-router-dom";
 import { PodComponentPages } from "./html-pages";
 
 function PodComponent() {
@@ -36,28 +36,10 @@ function PodComponent() {
 
   const { sessionDeviceId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // ---------- initial load ----------
+  // ---------- initialize toolbars once ----------
   useEffect(() => {
-    if (!session.id) {
-      const s = activeSessionService.getSession();
-      if (s) setSession(s);
-    }
-    if (!sessionDevice.id) {
-      const d = activeSessionService.getSessionDevice(sessionDeviceId);
-      if (d) setSessionDevice(d);
-    }
-    if (transcripts.length === 0) {
-      const sub = activeSessionService.getTranscripts();
-      sub.subscribe((arr) => {
-        if (!arr || !arr.length) return;
-        const data = arr
-          .filter((t) => t.session_device_id === parseInt(sessionDeviceId, 10))
-          .sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
-        setTranscripts(data);
-      });
-    }
-    // toolbars
     setShowFeatures(
       [
         "Emotional tone","Analytic thinking","Clout","Authenticity","Confusion",
@@ -70,8 +52,95 @@ function PodComponent() {
         "Participation","AI Analysis","Social Impact","Responsivity","Internal Cohesion","Newness","Communication Density",
       ].map((label, idx) => ({ label, value: idx, clicked: true }))
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ---------- load all data and subscriptions on mount ----------
+  useEffect(() => {
+    console.log('PodComponent: Mounting - loading all data and subscriptions');
+    const subscriptions = [];
+
+    if (!activeSessionService) {
+      console.log('PodComponent: No activeSessionService available');
+      return;
+    }
+
+    // ALWAYS load session data on mount (remove the conditional check!)
+    console.log('PodComponent: Loading session from service');
+    const sessionData = activeSessionService.getSession();
+    if (sessionData?.id) {
+      console.log('PodComponent: Got session from service:', sessionData);
+      setSession(sessionData);
+    } else {
+      // Fallback: fetch from API
+      const pathParts = window.location.pathname.split('/');
+      const sessionId = pathParts[pathParts.indexOf('sessions') + 1];
+      if (sessionId) {
+        console.log('PodComponent: No session from service, fetching for sessionId:', sessionId);
+        fetch(`/api/v1/sessions/${sessionId}`)
+          .then(res => res.json())
+          .then(data => {
+            console.log('PodComponent: Fetched session:', data);
+            setSession(data);
+          })
+          .catch(err => console.error('Failed to fetch session:', err));
+      }
+    }
+
+    // ALWAYS load device data on mount (remove the conditional check!)
+    console.log('PodComponent: Loading device from service');
+    const deviceData = activeSessionService.getSessionDevice(sessionDeviceId);
+    if (deviceData?.id) {
+      console.log('PodComponent: Got device from service:', deviceData);
+      setSessionDevice(deviceData);
+    } else {
+      // Fallback: fetch from API
+      const pathParts = window.location.pathname.split('/');
+      const sessionId = pathParts[pathParts.indexOf('sessions') + 1];
+      if (sessionId) {
+        console.log('PodComponent: No device from service, fetching device:', sessionDeviceId);
+        fetch(`/api/v1/sessions/${sessionId}/devices/${sessionDeviceId}`)
+          .then(res => res.json())
+          .then(data => {
+            console.log('PodComponent: Fetched device:', data);
+            setSessionDevice(data);
+          })
+          .catch(err => {
+            console.error('Failed to fetch device:', err);
+            // Set a minimal device object as fallback
+            setSessionDevice({ id: sessionDeviceId, name: `Device ${sessionDeviceId}` });
+          });
+      }
+    }
+
+    // ALWAYS subscribe to transcripts (this is the key fix!)
+    console.log('PodComponent: Creating transcript subscription');
+    const transcriptSource = activeSessionService.getTranscripts();
+    if (transcriptSource && transcriptSource.subscribe) {
+      const transcriptSub = transcriptSource.subscribe((arr) => {
+        console.log('PodComponent: Received transcripts update, count:', arr?.length);
+        if (!arr || !arr.length) {
+          console.log('PodComponent: No transcripts in update');
+          return;
+        }
+        const filtered = arr
+          .filter((t) => Number(t.session_device_id) === parseInt(sessionDeviceId, 10))
+          .sort((a, b) => (a.start_time > b.start_time ? 1 : -1));
+        console.log('PodComponent: Filtered transcripts for device', sessionDeviceId, 'count:', filtered.length);
+        setTranscripts(filtered);
+      });
+      subscriptions.push(transcriptSub);
+    }
+
+    // Cleanup function
+    return () => {
+      console.log('PodComponent: Unmounting - cleaning up subscriptions');
+      subscriptions.forEach(sub => {
+        if (!sub.closed) {
+          sub.unsubscribe();
+        }
+      });
+    };
+  }, [activeSessionService, sessionDeviceId]); // Include both to ensure data loads when service is ready
 
   // ---------- derive time window + displayTranscripts ----------
   useEffect(() => {

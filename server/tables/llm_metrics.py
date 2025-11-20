@@ -4,7 +4,7 @@ from datetime import datetime
 class LLMMetrics(db.Model):
     __tablename__ = 'llm_metrics'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    session_device_id = db.Column(db.Integer, db.ForeignKey('session_device.id'), nullable=False, unique=True)
+    session_device_id = db.Column(db.Integer, db.ForeignKey('session_device.id', ondelete='CASCADE'), nullable=False, unique=True)
     
     # Scores (0-100 scale, matching transcript table)
     emotional_tone_score = db.Column(db.Integer)
