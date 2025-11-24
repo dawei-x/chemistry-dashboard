@@ -14,11 +14,11 @@ function SpeakerPanel({ nodes, onSpeakerSelect, selectedSpeakers }) {
 
     nodes.forEach(node => {
       const speakerId = node.speaker_id || 'Unknown';
-      
+
       if (!speakerMap[speakerId]) {
         speakerMap[speakerId] = {
           id: speakerId,
-          name: speakerId === 'Unknown' ? 'Unknown' : `Speaker ${speakerId}`,
+          name: node.speaker_alias || (speakerId === 'Unknown' ? 'Unknown' : `Speaker ${speakerId}`),
           nodeCount: 0,
           types: {}
         };

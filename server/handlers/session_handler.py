@@ -9,6 +9,7 @@ import json
 from device_websockets import ConnectionManager
 from redis_helper import RedisSessions
 from llm_scoring_service import generate_llm_scores_for_session_device
+from seven_cs_service import analyze_session_seven_cs
 
 def create_session(user_id, name, devices, keyword_list_id, topic_model_id, byod, features, doa, folder):
     session, keywords = database.create_session(user_id, keyword_list_id, topic_model_id, name, folder)
@@ -74,6 +75,23 @@ def end_session(session_id):
     except Exception as e:
         logging.error(f"Failed to schedule LLM scoring: {e}")
         # Don't fail the session end if LLM scoring fails
+
+    # Schedule 7C analysis for each session device ===
+    try:
+        for session_device in session_devices:
+            # Schedule as background job to avoid blocking the response
+            scheduler.add_job(
+                func=analyze_session_seven_cs,
+                trigger='date',  # Run once, immediately
+                args=[session_device.id],
+                id=f'seven_cs_analysis_{session_device.id}',  # Unique job ID
+                replace_existing=True,  # Replace if job already exists
+                misfire_grace_time=30  # Allow 30 seconds grace time
+            )
+            logging.info(f"Scheduled 7C analysis for session_device {session_device.id}")
+    except Exception as e:
+        logging.error(f"Failed to schedule 7C analysis: {e}")
+        # Don't fail the session end if 7C analysis fails
     
 
     # Update session_devices

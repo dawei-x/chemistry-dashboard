@@ -49,7 +49,7 @@ function PodComponent() {
     setShowBoxes(
       [
         "Timeline control","Discussion timeline","Keyword detection","Discussion features","Radar chart",
-        "Participation","AI Analysis","Social Impact","Responsivity","Internal Cohesion","Newness","Communication Density",
+        "Participation","Visual Scaffolding","7C Analysis","Social Impact","Responsivity","Internal Cohesion","Newness","Communication Density",
       ].map((label, idx) => ({ label, value: idx, clicked: true }))
     );
   }, []);

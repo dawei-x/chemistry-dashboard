@@ -1,6 +1,7 @@
 from flask import Blueprint, Response, request, abort, session, make_response
 from utility import sanitize, string_to_bool, json_response
 from tables.session_device import SessionDevice
+from tables.speaker import Speaker
 from redis_helper import RedisSessions
 from tables.session import Session
 from utility import json_response
@@ -386,21 +387,47 @@ def get_transcripts_for_concept(device_id, timestamp):
         # Get time range (±15 seconds)
         start_time = max(0, timestamp - 15)
         end_time = timestamp + 15
-    
+
         import database
         all_transcripts = database.get_transcripts(session_device_id=device_id)
-        
+
+        # Get speaker aliases mapping
+        speaker_ids = set()
+        for t in all_transcripts:
+            if hasattr(t, 'speaker_id') and t.speaker_id:
+                speaker_ids.add(t.speaker_id)
+
+        speaker_map = {}
+        for speaker_id in speaker_ids:
+            speaker = database.get_speakers(id=speaker_id)
+            if speaker:
+                speaker_map[speaker_id] = speaker.get_alias()
+            else:
+                speaker_map[speaker_id] = f"Speaker {speaker_id}"
+
         filtered = []
         for t in all_transcripts:
             if t.start_time >= start_time and t.start_time <= end_time:
+                # Get speaker alias
+                speaker_id = getattr(t, 'speaker_id', None)
+                speaker_tag = getattr(t, 'speaker_tag', None)
+
+                if speaker_id and speaker_id in speaker_map:
+                    speaker_alias = speaker_map[speaker_id]
+                elif speaker_tag:
+                    speaker_alias = f"Speaker {speaker_tag}"
+                else:
+                    speaker_alias = "Unknown"
+
                 filtered.append({
                     'id': t.id,
                     'start_time': t.start_time,
                     'transcript': t.transcript,
-                    'speaker_id': getattr(t, 'speaker_id', None),
-                    'speaker_tag': getattr(t, 'speaker_tag', None)
+                    'speaker_id': speaker_id,
+                    'speaker_tag': speaker_tag,
+                    'speaker_alias': speaker_alias  # Add speaker alias field
                 })
-        
+
         return json_response(filtered)
     except Exception as e:
         print(f"Error: {e}")

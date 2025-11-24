@@ -1036,7 +1036,7 @@ useEffect(() => {
                             '14px' : '10px'
                     }}>
                         <div style={{fontSize: '12px', color: '#666', marginBottom: '5px'}}>
-                            {Math.floor(transcript.start_time)}s - Speaker {transcript.speaker_id || 'Unknown'}
+                            {Math.floor(transcript.start_time)}s - {transcript.speaker_alias || 'Unknown'}
                         </div>
                         <div>{transcript.transcript}</div>
                     </div>

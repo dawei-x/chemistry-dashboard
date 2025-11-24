@@ -7,6 +7,7 @@ import { AppKeywordsComponent } from "../../keywords/keywords-component";
 import { AppIndividualFeaturesComponent } from "../individualmetrics/features-component";
 import { LLMSupportPanel } from "../../llm-support/LLMSupportPanel";
 import { ConceptMapView } from '../concept-map/ConceptMapView';
+import SevenCsPanel from '../seven-cs/SevenCsPanel';
 import React from "react";
 
 function AppInfographicsComparison(props) {
@@ -211,10 +212,18 @@ function AppInfographicsComparison(props) {
 
           {props.details === "Group" && props.showBoxes.length > 0 && props.showBoxes[6] && props.showBoxes[6].clicked && (
   <AppSectionBoxComponent type={"wide-section"} heading={"Visual Scaffolding"}>
-    <ConceptMapView 
+    <ConceptMapView
       sessionId={props.session?.id}
       sessionDeviceId={props.sessionDevice?.id}
       socketConnection={props.socket}  // Will add socket later
+    />
+  </AppSectionBoxComponent>
+)}
+
+          {props.details === "Group" && props.showBoxes.length > 7 && props.showBoxes[7] && props.showBoxes[7].clicked && (
+  <AppSectionBoxComponent type={"wide-section"} heading={"7C Analysis"}>
+    <SevenCsPanel
+      sessionDeviceId={props.sessionDevice?.id}
     />
   </AppSectionBoxComponent>
 )}

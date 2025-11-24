@@ -31,6 +31,8 @@ from tables.concept_edge import ConceptEdge
 from tables.concept_cluster import ConceptCluster
 from tables.cluster_node_mapping import cluster_node_mapping
 from tables.llm_metrics import LLMMetrics
+from tables.seven_cs_analysis import SevenCsAnalysis
+from tables.seven_cs_coded_segment import SevenCsCodedSegment
 
 # Saves changes made to database (models)
 def save_changes():

@@ -84,12 +84,14 @@ migrate = Migrate(app, db)
 from llm_routes import llm_bp
 from concept_routes import concept_bp
 from websocket_handler import init_concept_websocket
-from rag_routes import rag_api 
+from rag_routes import rag_api
+from seven_cs_routes import seven_cs_bp 
 
 # Register LLM routes
 app.register_blueprint(llm_bp)
 app.register_blueprint(concept_bp)
 app.register_blueprint(rag_api)
+app.register_blueprint(seven_cs_bp)
 
 init_concept_websocket(socketio)
 

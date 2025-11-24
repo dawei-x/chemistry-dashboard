@@ -1,6 +1,7 @@
 import logging
 import json
 import database
+from tables.speaker import Speaker
 from openai import OpenAI
 import os
 from dotenv import load_dotenv
@@ -79,22 +80,60 @@ def generate_llm_scores_for_session_device(session_device_id):
         logging.error(f"Error generating LLM scores for session_device {session_device_id}: {str(e)}")
         return None
 
+def get_speaker_aliases(transcripts):
+    """
+    Get a mapping of speaker_id to alias for all speakers in transcripts.
+
+    Args:
+        transcripts: List of transcript objects
+
+    Returns:
+        Dictionary mapping speaker_id to speaker alias
+    """
+    # Collect unique speaker IDs
+    speaker_ids = set()
+    for t in transcripts:
+        if t.speaker_id:
+            speaker_ids.add(t.speaker_id)
+
+    # Fetch speakers from database
+    speaker_map = {}
+    for speaker_id in speaker_ids:
+        speaker = database.get_speakers(id=speaker_id)
+        if speaker:
+            speaker_map[speaker_id] = speaker.get_alias()
+        else:
+            # Fallback if speaker not found
+            speaker_map[speaker_id] = f"Speaker {speaker_id}"
+
+    return speaker_map
+
 def prepare_transcript_text(transcripts):
     """
     Prepare transcript text for LLM analysis.
-    
+
     Args:
         transcripts: List of transcript objects
-    
+
     Returns:
         Formatted string of transcripts
     """
+    # Get speaker aliases
+    speaker_aliases = get_speaker_aliases(transcripts)
+
     transcript_lines = []
     for t in transcripts:
-        speaker = f"Speaker {t.speaker_id}" if t.speaker_id else f"Speaker {t.speaker_tag}"
+        # Determine speaker name
+        if t.speaker_id and t.speaker_id in speaker_aliases:
+            speaker = speaker_aliases[t.speaker_id]
+        elif t.speaker_tag:
+            speaker = f"Speaker {t.speaker_tag}"
+        else:
+            speaker = "Unknown"
+
         time_min, time_sec = divmod(t.start_time, 60)
         transcript_lines.append(f"[{speaker} at {time_min}:{time_sec:02d}]: {t.transcript}")
-    
+
     return "\n".join(transcript_lines)
 
 def get_llm_scores(transcript_text):
