@@ -121,7 +121,7 @@ def analyze_session_seven_cs(session_device_id):
             db.session.commit()
         return None
 
-def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, overlap=10):
+def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, overlap=10, deduplicate=True):
     """
     Process transcripts in sliding windows and code them with 7C dimensions.
 
@@ -130,11 +130,16 @@ def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, ove
         transcripts: List of transcript objects
         window_size: Size of sliding window in seconds
         overlap: Overlap between windows in seconds
+        deduplicate: Whether to deduplicate segments (default True)
 
     Returns:
         List of SevenCsCodedSegment objects
     """
     coded_segments = []
+    # Track already coded (quote, dimension) pairs to avoid duplicates
+    already_coded = set()
+    total_codings = 0
+    duplicates_skipped = 0
 
     # Sort transcripts by start time
     sorted_transcripts = sorted(transcripts, key=lambda t: t.start_time)
@@ -165,21 +170,28 @@ def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, ove
             window_text = prepare_window_text(window_transcripts)
             logging.info(f"Processing window {current_window_start}-{window_end}s with {len(window_transcripts)} transcripts")
 
-            # Code this window
-            window_codings = code_window_with_seven_cs(
+            # Code this window with deduplication
+            window_codings = code_window_with_seven_cs_deduplicated(
                 window_text,
                 analysis_id,
                 window_transcripts,
                 current_window_start,
-                window_end
+                window_end,
+                already_coded,
+                deduplicate
             )
 
-            logging.info(f"Window produced {len(window_codings)} codings")
-            coded_segments.extend(window_codings)
+            # Track statistics
+            total_codings += window_codings['total']
+            duplicates_skipped += window_codings['duplicates_skipped']
+            coded_segments.extend(window_codings['segments'])
+
+            logging.info(f"Window produced {window_codings['total']} codings, {window_codings['duplicates_skipped']} duplicates skipped")
 
         # Move to next window
         current_window_start += (window_size - overlap)
 
+    logging.info(f"Coding complete: {total_codings} total codings from LLM, {duplicates_skipped} duplicates skipped, {len(coded_segments)} unique segments stored")
     return coded_segments
 
 def get_speaker_aliases(transcripts):
@@ -237,6 +249,225 @@ def prepare_window_text(transcripts):
         transcript_lines.append(f"[{speaker} at {time_min}:{time_sec:02d}]: {t.transcript}")
 
     return "\n".join(transcript_lines)
+
+def find_matching_transcript(quote, window_transcripts):
+    """
+    Find which transcript best matches the given quote.
+
+    Args:
+        quote: The quote text from LLM coding
+        window_transcripts: List of transcript objects in the window
+
+    Returns:
+        transcript_id of the best matching transcript, or None
+    """
+    if not quote or not window_transcripts:
+        return window_transcripts[0].id if window_transcripts else None
+
+    quote_lower = quote.lower().strip()
+    best_match = None
+    best_score = 0
+
+    for transcript in window_transcripts:
+        transcript_text = transcript.transcript.lower().strip()
+
+        # Check for exact match
+        if quote_lower in transcript_text:
+            return transcript.id
+
+        # Check for partial match (quote might be a substring)
+        if transcript_text in quote_lower:
+            return transcript.id
+
+        # Calculate simple overlap score
+        overlap_chars = sum(1 for char in quote_lower if char in transcript_text)
+        score = overlap_chars / max(len(quote_lower), 1)
+
+        if score > best_score:
+            best_score = score
+            best_match = transcript
+
+    return best_match.id if best_match else window_transcripts[0].id
+
+def code_window_with_seven_cs_deduplicated(window_text, analysis_id, window_transcripts, window_start, window_end, already_coded, deduplicate=True):
+    """
+    Wrapper for code_window_with_seven_cs that adds deduplication.
+
+    Args:
+        window_text: Formatted text of the window
+        analysis_id: ID of the analysis record
+        window_transcripts: List of transcript objects in the window
+        window_start: Start time of window in seconds
+        window_end: End time of window in seconds
+        already_coded: Set of (quote, dimension) tuples already processed
+        deduplicate: Whether to perform deduplication
+
+    Returns:
+        Dict with segments list, total codings count, and duplicates skipped count
+    """
+    # Get codings from the original function (without storing to DB yet)
+    raw_codings = code_window_with_seven_cs_raw(window_text, window_transcripts, window_start, window_end)
+
+    coded_segments = []
+    total_codings = len(raw_codings)
+    duplicates_skipped = 0
+
+    for coding in raw_codings:
+        if not isinstance(coding, dict):
+            continue
+
+        quote = coding.get('quote', '').strip()
+        dimension = coding.get('dimension', '').lower()
+
+        # Create deduplication key
+        key = (quote[:200], dimension)  # Use first 200 chars of quote for key
+
+        # Check if we should skip this coding
+        if deduplicate and key in already_coded:
+            duplicates_skipped += 1
+            logging.debug(f"Skipping duplicate: {dimension} - {quote[:50]}...")
+            continue
+
+        # Add to already_coded set
+        if deduplicate:
+            already_coded.add(key)
+
+        # Find the best matching transcript for this quote
+        transcript_id = find_matching_transcript(quote, window_transcripts)
+
+        # Create and store the segment
+        segment = SevenCsCodedSegment(
+            analysis_id=analysis_id,
+            transcript_id=transcript_id,
+            dimension=dimension,
+            start_time=window_start,
+            end_time=window_end,
+            text_snippet=quote[:500],  # Limit to 500 chars
+            speaker_tag=coding.get('speaker'),
+            coding_reason=coding.get('explanation', ''),
+            confidence=float(coding.get('confidence', 0.7))
+        )
+        db.session.add(segment)
+        coded_segments.append(segment)
+
+    db.session.commit()
+
+    return {
+        'segments': coded_segments,
+        'total': total_codings,
+        'duplicates_skipped': duplicates_skipped
+    }
+
+def code_window_with_seven_cs_raw(window_text, window_transcripts, window_start, window_end):
+    """
+    Use LLM to code a window of transcripts with 7C dimensions (returns raw codings without DB storage).
+
+    Args:
+        window_text: Formatted text of the window
+        window_transcripts: List of transcript objects in the window
+        window_start: Start time of window in seconds
+        window_end: End time of window in seconds
+
+    Returns:
+        List of coding dictionaries from LLM
+    """
+    # Build the prompt
+    prompt = f"""Analyze this discussion segment and identify which of the 7 dimensions of collaboration are present.
+
+For EACH dimension that is clearly present in this segment, provide:
+1. Whether it's strongly present (yes/no)
+2. A specific quote from the transcript showing this dimension
+3. Brief explanation of why this represents the dimension
+4. Confidence level (0.0 to 1.0)
+
+The 7 dimensions are:
+- Climate: {SEVEN_CS_FRAMEWORK['climate']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['climate']['indicators'])}
+
+- Communication: {SEVEN_CS_FRAMEWORK['communication']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['communication']['indicators'])}
+
+- Compatibility: {SEVEN_CS_FRAMEWORK['compatibility']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['compatibility']['indicators'])}
+
+- Conflict: {SEVEN_CS_FRAMEWORK['conflict']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['conflict']['indicators'])}
+
+- Context: {SEVEN_CS_FRAMEWORK['context']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['context']['indicators'])}
+
+- Contribution: {SEVEN_CS_FRAMEWORK['contribution']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['contribution']['indicators'])}
+
+- Constructive: {SEVEN_CS_FRAMEWORK['constructive']['description']}
+  Indicators: {', '.join(SEVEN_CS_FRAMEWORK['constructive']['indicators'])}
+
+Discussion Segment:
+{window_text}
+
+Return a JSON object with a "segments" array containing ONLY the dimensions that are clearly present:
+{{
+    "segments": [
+        {{
+            "dimension": "climate|communication|compatibility|conflict|context|contribution|constructive",
+            "quote": "exact quote from transcript",
+            "explanation": "why this shows the dimension",
+            "confidence": 0.0-1.0,
+            "speaker": "speaker identifier if available"
+        }}
+    ]
+}}
+
+If no clear evidence of any dimension is found, return {{"segments": []}}"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an expert in qualitative analysis of collaborative learning, specializing in the 7-dimension framework. Identify clear evidence of each dimension when present."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.3,
+            max_tokens=1000
+        )
+
+        # Parse response
+        result = json.loads(response.choices[0].message.content)
+        logging.info(f"LLM response for coding window: {json.dumps(result)[:500]}")
+
+        # Handle both array and object responses
+        if isinstance(result, dict) and 'codings' in result:
+            codings = result['codings']
+        elif isinstance(result, dict) and 'segments' in result:
+            codings = result['segments']
+        elif isinstance(result, dict) and 'results' in result:
+            codings = result['results']
+        elif isinstance(result, dict) and 'dimensions' in result:
+            codings = result['dimensions']
+        elif isinstance(result, list):
+            codings = result
+        else:
+            # If result is a dict with dimension names as keys
+            codings = []
+            for key, value in result.items():
+                if key in ['climate', 'communication', 'compatibility', 'conflict', 'context', 'contribution', 'constructive']:
+                    if isinstance(value, dict) and value.get('quote'):
+                        value['dimension'] = key
+                        codings.append(value)
+
+        logging.info(f"Extracted {len(codings)} codings from LLM response")
+        return codings
+
+    except Exception as e:
+        logging.error(f"Error coding window with 7 Cs: {e}")
+        return []
 
 def code_window_with_seven_cs(window_text, analysis_id, window_transcripts, window_start, window_end):
     """
