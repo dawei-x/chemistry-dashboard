@@ -36,6 +36,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
 
   const [transcriptPanel, setTranscriptPanel] = useState(null);
   const [panelTranscripts, setPanelTranscripts] = useState([]);
+  const [transcriptsLoading, setTranscriptsLoading] = useState(false);
+  const [transcriptsError, setTranscriptsError] = useState(null);
 
   // Hover tooltip state
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, data: null });
@@ -597,11 +599,17 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       });
 
       // Handle missing or invalid timestamps
-      if (timestamp === undefined || timestamp === null || timestamp < 0) {
+      if (timestamp === undefined || timestamp === null || timestamp <= 0) {
         console.warn('Concept has no valid timestamp:', node.data('label'));
+        setTranscriptsLoading(false);
+        setTranscriptsError('This concept was synthesized from the discussion and has no specific source.');
         setPanelTranscripts([]);
         return;
       }
+
+      // Start loading
+      setTranscriptsLoading(true);
+      setTranscriptsError(null);
 
       // Use sessionDeviceId prop instead of parsing from node ID
       // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
@@ -617,10 +625,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
         })
         .then(data => {
           setPanelTranscripts(Array.isArray(data) ? data : []);
+          setTranscriptsLoading(false);
         })
         .catch(err => {
           console.error('Failed to load transcripts:', err);
           setPanelTranscripts([]);
+          setTranscriptsLoading(false);
+          setTranscriptsError('Failed to load source transcripts.');
         });
     });
 
@@ -732,11 +743,17 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       });
 
       // Handle missing or invalid timestamps
-      if (timestamp === undefined || timestamp === null || timestamp < 0) {
+      if (timestamp === undefined || timestamp === null || timestamp <= 0) {
         console.warn('Concept has no valid timestamp:', node.data('label'));
+        setTranscriptsLoading(false);
+        setTranscriptsError('This concept was synthesized from the discussion and has no specific source.');
         setPanelTranscripts([]);
         return;
       }
+
+      // Start loading
+      setTranscriptsLoading(true);
+      setTranscriptsError(null);
 
       // Use sessionDeviceId prop instead of parsing from node ID
       // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
@@ -751,10 +768,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
         })
         .then(data => {
           setPanelTranscripts(Array.isArray(data) ? data : []);
+          setTranscriptsLoading(false);
         })
         .catch(err => {
           console.error('Failed to load transcripts:', err);
           setPanelTranscripts([]);
+          setTranscriptsLoading(false);
+          setTranscriptsError('Failed to load source transcripts.');
         });
     });
 
@@ -1207,7 +1227,16 @@ useEffect(() => {
             </button>
           </div>
           <div className={style.transcriptList}>
-            {panelTranscripts.length > 0 ? (
+            {transcriptsLoading ? (
+              <div className={style.loading}>
+                <div className={style.loadingSpinner}></div>
+                <div className={style.loadingText}>Loading transcripts...</div>
+              </div>
+            ) : transcriptsError ? (
+              <div className={style.noData}>
+                <div className={style.loadingText}>{transcriptsError}</div>
+              </div>
+            ) : panelTranscripts.length > 0 ? (
               panelTranscripts.map((transcript, idx) => {
                 const isHighlighted = Math.abs(transcript.start_time - transcriptPanel.timestamp) <= 5;
                 return (
@@ -1227,9 +1256,8 @@ useEffect(() => {
                 );
               })
             ) : (
-              <div className={style.loading}>
-                <div className={style.loadingSpinner}></div>
-                <div className={style.loadingText}>Loading transcripts...</div>
+              <div className={style.noData}>
+                <div className={style.loadingText}>No transcripts found in this time range.</div>
               </div>
             )}
           </div>
