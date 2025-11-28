@@ -1,18 +1,35 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
+import cola from 'cytoscape-cola';
 import style from './concept-map.module.css';
-import io from 'socket.io-client';
 import { SpeakerPanel } from '../speaker-panel/SpeakerPanel';
 
-// Register dagre layout
-Cytoscape.use(dagre);
+// Note: Real-time WebSocket updates removed - concepts are now generated post-discussion
 
-function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
+// Register layouts
+Cytoscape.use(dagre);
+Cytoscape.use(cola);
+
+// Semantic zoom thresholds - Google Maps style detail levels
+const ZOOM_THRESHOLDS = {
+  CLUSTERS_ONLY: 0.6,      // Below this: only cluster nodes visible
+  CLUSTERS_EXPANDED: 1.0,  // Below this: clusters with labels, concepts fading in
+  FULL_DETAIL: 1.5         // Above this: concepts prominent, clusters faded
+};
+
+// Animation timing constants
+const ANIMATION = {
+  OPACITY_TRANSITION: 200,  // ms for opacity fades
+  STAGGER_DELAY: 30,        // ms between each node in staggered animation
+  NODE_EXPAND: 400,         // ms for node position animation
+  EDGE_FADE: 300            // ms for edge fade-in
+};
+
+function ConceptMapView({ sessionId, sessionDeviceId }) {
   const cyRef = useRef(null);
   const containerRef = useRef(null);
   const expandedContainerRef = useRef(null);
-  const socketRef = useRef(null);
   const mountedRef = useRef(true);
   const timeoutsRef = useRef([]);
   const initializingRef = useRef(false);
@@ -20,13 +37,16 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
   const [transcriptPanel, setTranscriptPanel] = useState(null);
   const [panelTranscripts, setPanelTranscripts] = useState([]);
 
+  // Hover tooltip state
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, data: null });
+
   // State management
   const [conceptData, setConceptData] = useState({ nodes: [], edges: [] });
   const [clusters, setClusters] = useState([]);
   const [viewMode, setViewMode] = useState('clustered'); // 'clustered' | 'full'
-  const [expandedClusterIds, setExpandedClusterIds] = useState(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [generationStatus, setGenerationStatus] = useState('pending'); // 'pending' | 'processing' | 'completed' | 'failed'
   const [displayData, setDisplayData] = useState({
     nodeCount: 0,
     edgeCount: 0,
@@ -35,22 +55,28 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
 
   const [selectedSpeakers, setSelectedSpeakers] = useState([]); // Empty = show all
   const [showSpeakerPanel, setShowSpeakerPanel] = useState(true);
-  
-  // Node colors configuration
+
+  // Semantic zoom state
+  const [viewLocked, setViewLocked] = useState(false);  // Lock view toggle - prevents auto-switching
+  const [currentZoomLevel, setCurrentZoomLevel] = useState('CLUSTERS_ONLY');
+  const positionCacheRef = useRef(new Map());  // Cache pre-computed node positions
+  const pendingZoomRef = useRef(null);  // requestAnimationFrame debouncing
+
+  // Node colors configuration - Modern Tailwind-inspired palette
   const nodeColors = useMemo(() => ({
-    question: '#e74c3c',
-    idea: '#3498db',
-    example: '#27ae60',
-    uncertainty: '#f39c12',
-    action: '#9b59b6',
-    goal: '#2980b9',
-    problem: '#c0392b',
-    solution: '#16a085',
-    elaboration: '#34495e',
-    synthesis: '#8e44ad',
-    challenge: '#d35400',
-    constraint: '#7f8c8d',
-    default: '#95a5a6'
+    question: '#EF4444',    // Red-500
+    idea: '#3B82F6',        // Blue-500
+    example: '#10B981',     // Emerald-500
+    uncertainty: '#F59E0B', // Amber-500
+    action: '#8B5CF6',      // Violet-500
+    goal: '#0EA5E9',        // Sky-500
+    problem: '#DC2626',     // Red-600
+    solution: '#059669',    // Emerald-600
+    elaboration: '#475569', // Slate-600
+    synthesis: '#A855F7',   // Purple-500
+    challenge: '#EA580C',   // Orange-600
+    constraint: '#64748B',  // Slate-500
+    default: '#6B7280'      // Gray-500
   }), []);
 
   // Color helper
@@ -63,22 +89,118 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     return "#" + (0x1000000 + (R<255?R<1?0:R:255)*0x10000 + (G<255?G<1?0:G:255)*0x100 + (B<255?B<1?0:B:255)).toString(16).slice(1);
   }, []);
 
-  // Utility functions for organic growth animation
-  const findRootNodes = useCallback((nodes, edges) => {
-    // Root nodes are those with no incoming edges
-    const targetIds = new Set(edges.map(e => e.target || e.data?.target));
-    return nodes.filter(node => {
-      const nodeId = node.id || node.data?.id;
-      return !targetIds.has(nodeId);
-    });
-  }, []);
-
-
   // Format edge labels
   const formatEdgeLabel = useCallback((type) => {
     if (!type) return '';
     return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   }, []);
+
+  // Determine semantic zoom level from numeric zoom value
+  const getZoomLevel = useCallback((zoom) => {
+    if (zoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY) return 'CLUSTERS_ONLY';
+    if (zoom < ZOOM_THRESHOLDS.CLUSTERS_EXPANDED) return 'CLUSTERS_LABELED';
+    if (zoom < ZOOM_THRESHOLDS.FULL_DETAIL) return 'EXPANDED';
+    return 'FULL_DETAIL';
+  }, []);
+
+  // Calculate smooth opacity transitions between zoom levels
+  const calculateOpacities = useCallback((zoom) => {
+    let clusterBgOpacity, clusterBorderOpacity, clusterTextOpacity;
+    let nodeOpacity, intraEdgeOpacity, interEdgeOpacity;
+
+    if (zoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY) {
+      // Clusters only - collapsed appearance
+      clusterBgOpacity = 0.7;
+      clusterBorderOpacity = 0.8;
+      clusterTextOpacity = 1;
+      nodeOpacity = 0;
+      intraEdgeOpacity = 0;
+      interEdgeOpacity = 0.8;
+    } else if (zoom < ZOOM_THRESHOLDS.CLUSTERS_EXPANDED) {
+      // Transition zone: clusters start showing content
+      const t = (zoom - ZOOM_THRESHOLDS.CLUSTERS_ONLY) /
+                (ZOOM_THRESHOLDS.CLUSTERS_EXPANDED - ZOOM_THRESHOLDS.CLUSTERS_ONLY);
+      clusterBgOpacity = 0.7 - (0.4 * t);  // 0.7 -> 0.3
+      clusterBorderOpacity = 0.8;
+      clusterTextOpacity = 1;
+      nodeOpacity = t * 0.6;  // 0 -> 0.6
+      intraEdgeOpacity = t * 0.4;
+      interEdgeOpacity = 0.8 - (0.3 * t);
+    } else if (zoom < ZOOM_THRESHOLDS.FULL_DETAIL) {
+      // Expanded view - children becoming more prominent
+      const t = (zoom - ZOOM_THRESHOLDS.CLUSTERS_EXPANDED) /
+                (ZOOM_THRESHOLDS.FULL_DETAIL - ZOOM_THRESHOLDS.CLUSTERS_EXPANDED);
+      clusterBgOpacity = 0.3 - (0.15 * t);  // 0.3 -> 0.15
+      clusterBorderOpacity = 0.8 - (0.4 * t);
+      clusterTextOpacity = 1 - (0.4 * t);
+      nodeOpacity = 0.6 + (0.4 * t);  // 0.6 -> 1.0
+      intraEdgeOpacity = 0.4 + (0.6 * t);  // 0.4 -> 1.0
+      interEdgeOpacity = 0.5 - (0.3 * t);
+    } else {
+      // Full detail - nodes prominent, clusters faded
+      clusterBgOpacity = 0.1;
+      clusterBorderOpacity = 0.3;
+      clusterTextOpacity = 0.5;
+      nodeOpacity = 1;
+      intraEdgeOpacity = 1;
+      interEdgeOpacity = 0.2;
+    }
+
+    return {
+      cluster: { bgOpacity: clusterBgOpacity, borderOpacity: clusterBorderOpacity, textOpacity: clusterTextOpacity },
+      node: { opacity: nodeOpacity },
+      intraEdge: { opacity: intraEdgeOpacity },
+      interEdge: { opacity: interEdgeOpacity }
+    };
+  }, []);
+
+  // Handle semantic zoom - update opacities based on zoom level
+  // Uses requestAnimationFrame for smooth debouncing
+  const handleSemanticZoom = useCallback((cy) => {
+    if (!cy || viewLocked) return;  // Skip if view is locked
+
+    // Cancel any pending zoom operation for smoother performance
+    if (pendingZoomRef.current) {
+      cancelAnimationFrame(pendingZoomRef.current);
+    }
+
+    // Use requestAnimationFrame for smooth debouncing
+    pendingZoomRef.current = requestAnimationFrame(() => {
+      const zoom = cy.zoom();
+
+      // Calculate opacity values for current zoom
+      const opacities = calculateOpacities(zoom);
+
+      // Use batch for performance - all updates in single redraw
+      // CSS transitions handle the smooth animation
+      cy.batch(() => {
+        // Update cluster nodes
+        cy.nodes('[isCluster]').forEach(node => {
+          node.data('bgOpacity', opacities.cluster.bgOpacity);
+          node.data('borderOpacity', opacities.cluster.borderOpacity);
+          node.data('textOpacity', opacities.cluster.textOpacity);
+        });
+
+        // Update concept nodes - simple opacity update, CSS handles animation
+        cy.nodes('[!isCluster]').forEach(node => {
+          node.data('nodeOpacity', opacities.node.opacity);
+        });
+
+        // Update intra-cluster edges
+        cy.edges('[!interCluster]').forEach(edge => {
+          edge.data('edgeOpacity', opacities.intraEdge.opacity);
+        });
+
+        // Update inter-cluster edges
+        cy.edges('[interCluster]').forEach(edge => {
+          edge.data('interEdgeOpacity', opacities.interEdge.opacity);
+        });
+      });
+
+      // Update state for UI indicator
+      setCurrentZoomLevel(getZoomLevel(zoom));
+    });
+  }, [viewLocked, getZoomLevel, calculateOpacities]);
 
   // Initialize Cytoscape with compound node support
   const initCytoscape = useCallback((container) => {
@@ -87,34 +209,37 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
     const cy = Cytoscape({
       container: container,
       style: [
-        // Cluster (parent) node styles
+        // Cluster (parent) node styles - with dynamic opacity for semantic zoom
         {
           selector: 'node[isCluster]',
           style: {
             'shape': 'round-rectangle',
             'background-color': 'data(color)',
-            'background-opacity': 0.3,
+            'background-opacity': 'data(bgOpacity)',  // Dynamic opacity
             'border-width': 2,
             'border-color': 'data(borderColor)',
-            'border-opacity': 0.8,
+            'border-opacity': 'data(borderOpacity)',  // Dynamic opacity
             'label': 'data(label)',
             'text-valign': 'top',
             'text-halign': 'center',
             'font-size': '16px',
             'font-weight': 'bold',
+            'text-opacity': 'data(textOpacity)',  // Dynamic opacity
             'padding': '30px',
             'text-margin-y': 10,
             'min-width': '200px',
             'min-height': '150px',
-            'z-index': 1
+            'z-index': 1,
+            // CSS transitions for smooth opacity changes
+            'transition-property': 'background-opacity, border-opacity, text-opacity',
+            'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
         },
-        // Collapsed cluster styles
+        // Collapsed cluster styles (when all collapsed)
         {
           selector: 'node[isCluster][collapsed]',
           style: {
             'shape': 'ellipse',
-            'background-opacity': 0.7,
             'width': '180px',
             'height': '120px',
             'text-valign': 'center',
@@ -122,24 +247,33 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
             'cursor': 'pointer'
           }
         },
-        // Regular node styles
+        // Regular node styles - with dynamic opacity for semantic zoom
         {
           selector: 'node[!isCluster]',
           style: {
-            'shape': 'round-rectangle',
-            'width': '120px',
-            'height': 40,
+            'shape': 'round-rectangle',  // Better for text
+            'width': '180px',            // Increased from 140px
+            'height': 44,                // Increased from 36
             'label': 'data(label)',
             'text-valign': 'center',
             'text-halign': 'center',
             'background-color': 'data(color)',
+            'background-opacity': 'data(nodeOpacity)',  // Dynamic opacity
             'border-width': 2,
             'border-color': 'data(borderColor)',
-            'font-size': '12px',
+            'border-opacity': 0.6,
+            'font-size': '12px',         // Increased from 11px
+            'font-weight': 500,
             'color': '#ffffff',
-            'text-wrap': 'wrap',
-            'text-max-width': '110px',
-            'z-index': 10
+            'text-opacity': 'data(nodeOpacity)',  // Dynamic opacity
+            'text-wrap': 'ellipsis',
+            'text-max-width': '160px',   // Increased from 125px
+            'z-index': 10,
+            // Subtle shadow effect via overlay
+            'overlay-opacity': 0,
+            // CSS transitions for smooth opacity changes
+            'transition-property': 'background-opacity, border-opacity, text-opacity, opacity',
+            'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
         },
         // Hidden nodes when cluster is collapsed
@@ -149,21 +283,31 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
             'display': 'none'
           }
         },
-        // Edge styles
+        // Edge styles - with dynamic opacity
         {
           selector: 'edge',
           style: {
             'curve-style': 'bezier',
-            'target-arrow-shape': 'triangle',
+            'target-arrow-shape': 'triangle-backcurve',  // Softer arrow
+            'arrow-scale': 0.8,
             'width': 2,
-            'line-color': '#7f8c8d',
-            'target-arrow-color': '#7f8c8d',
-            'arrow-scale': 1,
+            'line-color': '#94A3B8',           // Softer gray (Slate-400)
+            'target-arrow-color': '#94A3B8',
+            'opacity': 'data(edgeOpacity)',    // Dynamic opacity
             'label': 'data(label)',
-            'font-size': '10px',
+            'font-size': '11px',               // Increased from 10px
+            'font-weight': 500,
             'text-rotation': 'autorotate',
-            'text-opacity': 0.7,
-            'z-index': 5
+            'text-background-color': '#FFFFFF', // White background for readability
+            'text-background-opacity': 0.9,
+            'text-background-padding': '3px',
+            'text-background-shape': 'roundrectangle',
+            'color': '#475569',                // Slate-600 for contrast
+            'text-opacity': 'data(edgeOpacity)',
+            'z-index': 5,
+            // CSS transitions
+            'transition-property': 'opacity, text-opacity',
+            'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
         },
         // Hidden edges
@@ -173,7 +317,7 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
             'display': 'none'
           }
         },
-        // Inter-cluster edges
+        // Inter-cluster edges - with dynamic opacity
         {
           selector: 'edge[interCluster]',
           style: {
@@ -181,7 +325,9 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
             'target-arrow-color': '#3498db',
             'width': 3,
             'line-style': 'dashed',
-            'opacity': 0.6
+            'opacity': 'data(interEdgeOpacity)',  // Dynamic opacity
+            'transition-property': 'opacity',
+            'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
         }
       ],
@@ -196,289 +342,156 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
       autoungrabify: false
     });
 
-    cy.on('tap', 'node[!isCluster]', function(evt) {
-    console.log('Node clicked!');
-    const node = evt.target;
-    console.log('Node data:', node.data());
-    const timestamp = node.data('timestamp');
-    const nodeId = node.data('id'); 
+    // NOTE: Event handlers are NOT registered here
+    // They are registered in renderClusteredView and renderFullView
+    // to ensure proper cleanup on view mode switch
 
-    console.log('Timestamp:', timestamp);
-    console.log('Node ID:', nodeId);
-    
-    // sessionDeviceId is already in your component scope
-    // For sessionId, extract it from the node ID pattern "node_SESSION:DEVICE_INDEX"
-    //const nodeId = node.data('id');
-    const match = nodeId.match(/node_(\d+):(\d+)_/);
-    const sessionId = match ? match[1] : '';
-    const deviceId = match ? match[2] : sessionDeviceId;
-    
-    const url = `/sessions/${sessionId}/pods/${deviceId}/transcripts?highlight_time=${timestamp}`;
-    console.log('Navigating to:', url);
-    window.location.href = url;
-  });
-  
     return cy;
   }, []);
 
-  // Load concept data
-  useEffect(() => {
-    if (!sessionDeviceId || initializingRef.current) return;
-
-    console.log('SessionDeviceId being used:', sessionDeviceId);
-    
-    initializingRef.current = true;
-    setIsLoading(true);
-
-    // Load concept data
-    fetch(`/api/v1/concepts/${sessionDeviceId}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.nodes) {
-          setConceptData(data);
-          setDisplayData({
-            nodeCount: data.nodes.length,
-            edgeCount: data.edges.length,
-            discourseType: data.discourse_type || 'exploratory'
-          });
-          
-          // Load or create clusters
-          return fetch(`/api/v1/concepts/${sessionDeviceId}/clusters`);
-        }
-        throw new Error('No concept data');
-      })
-      .then(res => res.json())
-      .then(clusterData => {
-        console.log('Clusters loaded:', clusterData);  // Add this
-        if (clusterData.clusters && clusterData.clusters.length > 0) {
-          setClusters(clusterData.clusters);
-        } else if (conceptData.nodes.length > 0) {
-          // Trigger clustering if we have nodes but no clusters
-          return fetch(`/api/v1/concepts/${sessionDeviceId}/cluster`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method: 'semantic' })
-          })
-          .then(() => fetch(`/api/v1/concepts/${sessionDeviceId}/clusters`))
-          .then(res => res.json())
-          .then(newClusterData => {
-            setClusters(newClusterData.clusters || []);
-          });
-        }
-      })
-      .catch(err => {
-        console.error('Failed to load data:', err);
-      })
-      .finally(() => {
-        setIsLoading(false);
-        initializingRef.current = false;
-      });
-  }, [sessionDeviceId]);
-
-  // Setup WebSocket for real-time updates
+  // Load concept data with generation status handling
   useEffect(() => {
     if (!sessionDeviceId) return;
 
     console.log('SessionDeviceId being used:', sessionDeviceId);
-    
-    const socket = io('http://localhost:5002', {
-      transports: ['polling', 'websocket']
-    });
-    
-    socket.emit('join_concept_session', {
-      session_device_id: sessionDeviceId
-    });
-    
-    socket.on('concept_update', (data) => {
-      console.log('Received concept update:', data);
 
-      // MERGE new nodes and edges with existing ones instead of replacing
-      setConceptData(prevData => {
-        // Handle initial case where prevData might not exist
-        if (!prevData || !prevData.nodes) {
-          return data;
-        }
+    const loadConceptData = () => {
+      setIsLoading(true);
 
-        return {
-          nodes: [...prevData.nodes, ...(data.nodes || [])],
-          edges: [...prevData.edges, ...(data.edges || [])],
-          discourse_type: data.discourse_type || prevData.discourse_type || 'exploratory'
-        };
-      });
-
-      // Update display counts incrementally instead of replacing
-      setDisplayData(prevDisplay => ({
-        nodeCount: (prevDisplay.nodeCount || 0) + (data.nodes?.length || 0),
-        edgeCount: (prevDisplay.edgeCount || 0) + (data.edges?.length || 0),
-        discourseType: data.discourse_type || prevDisplay.discourseType || 'exploratory'
-      }));
-    });
-    
-    return () => {
-      socket.emit('leave_concept_session', {
-        session_device_id: sessionDeviceId
-      });
-      socket.disconnect();
-    };
-  }, [sessionDeviceId]);
-
-  // Build elements without adding them to cy (for incremental updates)
-  const buildClusteredElements = useCallback(() => {
-    const elements = [];
-    const clusterPositions = calculateClusterPositions(clusters.length);
-
-    clusters.forEach((cluster, index) => {
-      const isCollapsed = !expandedClusterIds.has(cluster.id);
-      const clusterColor = getClusterColor(index);
-
-      // Add cluster parent node
-      elements.push({
-        data: {
-          id: `cluster_${cluster.id}`,
-          label: cluster.name || `Cluster ${index + 1}`,
-          isCluster: true,
-          collapsed: isCollapsed,
-          color: clusterColor,
-          borderColor: darkenColor(clusterColor, 0.3),
-          nodeCount: cluster.node_count || cluster.nodes?.length || 0,
-          summary: cluster.summary
-        },
-        position: clusterPositions[index],
-        classes: isCollapsed ? 'collapsed-cluster' : 'expanded-cluster'
-      });
-
-      if (!isCollapsed && cluster.nodes) {
-        // Add individual nodes when expanded
-        cluster.nodes.forEach((node, nodeIndex) => {
-          const nodeColor = nodeColors[node.type] || nodeColors.default;
-          elements.push({
-            data: {
-              id: node.id,
-              parent: `cluster_${cluster.id}`,
-              label: node.text,
-              type: node.type,
-              color: nodeColor,
-              timestamp: node.timestamp || 0
-            }
-          });
-        });
-      }
-    });
-
-    // Add edges between clusters
-    if (conceptData.edges) {
-      conceptData.edges.forEach(edge => {
-        elements.push({
-          data: {
-            id: `edge_${edge.source}_${edge.target}`,
-            source: edge.source,
-            target: edge.target,
-            label: formatEdgeLabel(edge.type)
+      // Load concept data (includes generation_status)
+      fetch(`/api/v1/concepts/${sessionDeviceId}`)
+        .then(res => res.json())
+        .then(data => {
+          // Update generation status from API response
+          if (data.generation_status) {
+            setGenerationStatus(data.generation_status);
           }
+
+          if (data && data.nodes && data.nodes.length > 0) {
+            setConceptData(data);
+            setDisplayData({
+              nodeCount: data.nodes.length,
+              edgeCount: data.edges.length,
+              discourseType: data.discourse_type || 'exploratory'
+            });
+
+            // Load or create clusters
+            return fetch(`/api/v1/concepts/${sessionDeviceId}/clusters`);
+          } else if (data.generation_status === 'processing') {
+            // No data yet but generation is in progress
+            return null;
+          }
+          throw new Error('No concept data');
+        })
+        .then(res => res ? res.json() : null)
+        .then(clusterData => {
+          if (!clusterData) return;
+
+          console.log('Clusters loaded:', clusterData);
+          if (clusterData.clusters && clusterData.clusters.length > 0) {
+            setClusters(clusterData.clusters);
+          } else if (conceptData.nodes.length > 0) {
+            // Trigger clustering if we have nodes but no clusters
+            return fetch(`/api/v1/concepts/${sessionDeviceId}/cluster`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ method: 'semantic' })
+            })
+            .then(() => fetch(`/api/v1/concepts/${sessionDeviceId}/clusters`))
+            .then(res => res.json())
+            .then(newClusterData => {
+              setClusters(newClusterData.clusters || []);
+            });
+          }
+        })
+        .catch(err => {
+          console.error('Failed to load data:', err);
+        })
+        .finally(() => {
+          setIsLoading(false);
         });
-      });
+    };
+
+    // Initial load
+    loadConceptData();
+
+    // Poll for updates if generation is in progress
+    let pollInterval = null;
+    if (generationStatus === 'processing' || generationStatus === 'pending') {
+      pollInterval = setInterval(() => {
+        fetch(`/api/v1/concepts/${sessionDeviceId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data.generation_status) {
+              setGenerationStatus(data.generation_status);
+
+              // If generation completed, reload full data
+              if (data.generation_status === 'completed' && data.nodes && data.nodes.length > 0) {
+                loadConceptData();
+                clearInterval(pollInterval);
+              }
+            }
+          })
+          .catch(err => console.error('Polling error:', err));
+      }, 5000); // Poll every 5 seconds
     }
 
-    return elements;
-  }, [clusters, expandedClusterIds, conceptData.edges, nodeColors, formatEdgeLabel, darkenColor]);
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [sessionDeviceId, generationStatus]);
 
-  const buildFullViewElements = useCallback(() => {
-    const elements = [];
+  // Note: Real-time WebSocket updates removed - concepts are now generated post-discussion
+  // The polling mechanism above handles checking for generation completion
 
-    // Add all nodes
-    conceptData.nodes.forEach(node => {
-      const nodeColor = nodeColors[node.type] || nodeColors.default;
-      elements.push({
-        data: {
-          id: node.id,
-          label: node.text,
-          type: node.type,
-          color: nodeColor,
-          timestamp: node.timestamp || 0
-        }
-      });
-    });
-
-    // Add all edges
-    conceptData.edges.forEach(edge => {
-      elements.push({
-        data: {
-          id: `edge_${edge.source}_${edge.target}`,
-          source: edge.source,
-          target: edge.target,
-          label: formatEdgeLabel(edge.type)
-        }
-      });
-    });
-
-    return elements;
-  }, [conceptData.nodes, conceptData.edges, nodeColors, formatEdgeLabel]);
-
-  // Build and render the graph - simplified version without complex animation
-  useEffect(() => {
-    const container = isExpanded ? expandedContainerRef.current : containerRef.current;
-    if (!container || !conceptData.nodes || conceptData.nodes.length === 0) return;
-
-    // Initialize Cytoscape if not already done
-    if (!cyRef.current) {
-      cyRef.current = initCytoscape(container);
-    } else {
-      cyRef.current.mount(container);
-    }
-
-    const cy = cyRef.current;
-
-    // Always do a full re-render to ensure all nodes and edges are properly displayed
-    cy.elements().remove();
-
-    if (viewMode === 'clustered' && clusters.length > 0) {
-      renderClusteredView(cy);
-    } else {
-      renderFullView(cy);
-    }
-
-    // Fit to viewport
-    setTimeout(() => {
-      cy.fit(50);
-      cy.center();
-    }, 100);
-
-  }, [conceptData, clusters, viewMode, expandedClusterIds, isExpanded, initCytoscape]);
-
-  // Render clustered view with compound nodes
+  // Render clustered view with semantic zoom support
+  // All elements are pre-rendered, visibility controlled via opacity
   const renderClusteredView = useCallback((cy) => {
     const elements = [];
     const clusterPositions = calculateClusterPositions(clusters.length);
-    
+
+    // Get initial opacities based on current zoom (default to 1.0 for initial render)
+    const initialZoom = cy.zoom() || 1.0;
+    const initialOpacities = calculateOpacities(initialZoom);
+
     clusters.forEach((cluster, index) => {
-      const isCollapsed = !expandedClusterIds.has(cluster.id);
       const clusterColor = getClusterColor(index);
-      
-      // Add cluster parent node
+
+      // Add cluster parent node with opacity data
       elements.push({
         data: {
           id: `cluster_${cluster.id}`,
           label: cluster.name || `Cluster ${index + 1}`,
           isCluster: true,
-          collapsed: isCollapsed,
           color: clusterColor,
           borderColor: darkenColor(clusterColor, 0.3),
           nodeCount: cluster.node_count || cluster.nodes?.length || 0,
-          summary: cluster.summary
+          summary: cluster.summary,
+          // Dynamic opacity values for semantic zoom
+          bgOpacity: initialOpacities.cluster.bgOpacity,
+          borderOpacity: initialOpacities.cluster.borderOpacity,
+          textOpacity: initialOpacities.cluster.textOpacity
         },
-        position: clusterPositions[index],
-        classes: isCollapsed ? 'collapsed-cluster' : 'expanded-cluster'
+        position: clusterPositions[index]
       });
 
-      if (!isCollapsed) {
-        // Add individual nodes when expanded
+      // ALWAYS add individual nodes (visibility controlled by opacity)
+      if (cluster.nodes) {
         const nodePositions = calculateNodePositions(
           cluster.nodes.length,
           clusterPositions[index]
         );
-        
+
+        // Cache positions for animated expansion
+        const clusterPositionCache = new Map();
+
         cluster.nodes.forEach((node, nodeIndex) => {
           const nodeColor = nodeColors[node.type] || nodeColors.default;
+          const position = nodePositions[nodeIndex];
+
+          // Cache the position
+          clusterPositionCache.set(node.id, position);
+
           elements.push({
             data: {
               id: node.id,
@@ -487,11 +500,17 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
               type: node.type,
               color: nodeColor,
               borderColor: darkenColor(nodeColor, 0.2),
-              timestamp: node.timestamp  // ADD THIS - include timestamp
+              timestamp: node.timestamp,
+              clusterId: cluster.id,
+              // Dynamic opacity for semantic zoom
+              nodeOpacity: initialOpacities.node.opacity
             },
-            position: nodePositions[nodeIndex]
+            position: position
           });
         });
+
+        // Store in position cache
+        positionCacheRef.current.set(cluster.id, clusterPositionCache);
 
         // Add edges within cluster
         if (cluster.edges) {
@@ -501,7 +520,9 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
                 id: edge.id,
                 source: edge.source,
                 target: edge.target,
-                label: formatEdgeLabel(edge.type)
+                label: formatEdgeLabel(edge.type),
+                // Dynamic opacity for semantic zoom
+                edgeOpacity: initialOpacities.intraEdge.opacity
               }
             });
           });
@@ -509,84 +530,112 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
       }
     });
 
-    // Add inter-cluster edges if clusters are collapsed
-    if (expandedClusterIds.size === 0) {
-      const interClusterEdges = findInterClusterEdges();
-      interClusterEdges.forEach((edge, index) => {
-        elements.push({
-          data: {
-            id: `inter_edge_${index}`,
-            source: `cluster_${edge.sourceCluster}`,
-            target: `cluster_${edge.targetCluster}`,
-            interCluster: true,
-            label: `${edge.count} connection${edge.count > 1 ? 's' : ''}`
-          }
-        });
+    // Add inter-cluster edges
+    const interClusterEdges = findInterClusterEdges();
+    interClusterEdges.forEach((edge, index) => {
+      elements.push({
+        data: {
+          id: `inter_edge_${index}`,
+          source: `cluster_${edge.sourceCluster}`,
+          target: `cluster_${edge.targetCluster}`,
+          interCluster: true,
+          label: `${edge.count} connection${edge.count > 1 ? 's' : ''}`,
+          // Dynamic opacity for semantic zoom
+          interEdgeOpacity: initialOpacities.interEdge.opacity
+        }
       });
-    }
+    });
 
     cy.add(elements);
 
-    // Add click handler for cluster nodes
+    // Register zoom event handler for semantic zoom
+    cy.off('zoom');
+    cy.on('zoom', () => {
+      handleSemanticZoom(cy);
+    });
+
+    // Add click handler for cluster nodes - zoom into cluster
     cy.off('tap');
     cy.on('tap', 'node[isCluster]', (evt) => {
-      const clusterId = parseInt(evt.target.id().replace('cluster_', ''));
-      toggleClusterExpansion(clusterId);
+      const node = evt.target;
+      // Animate zoom into the cluster
+      cy.animate({
+        zoom: ZOOM_THRESHOLDS.FULL_DETAIL + 0.2,
+        center: { eles: node },
+        duration: 300,
+        easing: 'ease-out-cubic'
+      });
     });
 
-    // ADD THIS - Click handler for concept nodes to show transcripts
+    // Click handler for concept nodes to show transcripts
     cy.on('tap', 'node[!isCluster]', function(evt) {
       const node = evt.target;
-      const timestamp = node.data('timestamp');
-      const nodeId = node.data('id');
-      
-      const match = nodeId.match(/node_(\d+):(\d+)_/);
-      if (match) {
-        const deviceId = match[2];
-        
-        setTranscriptPanel({
-          nodeText: node.data('label'),
-          timestamp: timestamp
+      const timestamp = node.data('timestamp') || 0;
+
+      setTranscriptPanel({
+        nodeText: node.data('label'),
+        timestamp: timestamp
+      });
+
+      // Use sessionDeviceId prop instead of parsing from node ID
+      // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
+      const adjustedTimestamp = timestamp - 15;
+      const url = `/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`;
+      fetch(url)
+        .then(res => res.json())
+        .then(data => {
+          setPanelTranscripts(data);
+        })
+        .catch(err => {
+          console.error('Failed to load transcripts:', err);
+          setPanelTranscripts([]);
         });
-        
-        // Adjusted timestamp to compensate for processing delay
-        const adjustedTimestamp = timestamp - 15;
-        fetch(`/api/v1/concepts/${deviceId}/transcripts/${adjustedTimestamp}`)
-          .then(res => res.json())
-          .then(data => {
-            setPanelTranscripts(data);
-          })
-          .catch(err => {
-            console.error('Failed to load transcripts:', err);
-            setPanelTranscripts([]);
-          });
-      }
     });
 
-    // Run layout
-    if (expandedClusterIds.size > 0) {
-      cy.layout({
-        name: 'dagre',
-        rankDir: 'TB',
-        padding: 50,
-        spacingFactor: 1.2,
-        animate: true,
-        animationDuration: 500
-      }).run();
-    } else {
-      cy.layout({
-        name: 'preset',
-        animate: true,
-        animationDuration: 500
-      }).run();
-    }
-  }, [clusters, expandedClusterIds, nodeColors, darkenColor, formatEdgeLabel, setTranscriptPanel, setPanelTranscripts]);
+    // Hover tooltip handlers
+    cy.on('mouseover', 'node[!isCluster]', function(evt) {
+      const node = evt.target;
+      const renderedPos = node.renderedPosition();
+      const container = cy.container().getBoundingClientRect();
 
-  // Render full view (original implementation)
+      setTooltip({
+        visible: true,
+        x: container.left + renderedPos.x + 20,
+        y: container.top + renderedPos.y - 10,
+        data: {
+          label: node.data('label'),
+          type: node.data('type'),
+          timestamp: node.data('timestamp'),
+          color: node.data('color')
+        }
+      });
+    });
+
+    cy.on('mouseout', 'node[!isCluster]', function() {
+      setTooltip(prev => ({ ...prev, visible: false }));
+    });
+
+    // Run layout once - positions will be cached, no recalculation on zoom
+    cy.layout({
+      name: 'dagre',
+      rankDir: 'TB',
+      padding: 50,
+      spacingFactor: 1.2,
+      animate: true,
+      animationDuration: 500
+    }).run();
+
+    // Apply initial opacity based on zoom level after layout
+    setTimeout(() => {
+      handleSemanticZoom(cy);
+    }, 100);
+  }, [clusters, nodeColors, darkenColor, formatEdgeLabel, calculateOpacities, handleSemanticZoom, setTranscriptPanel, setPanelTranscripts, sessionDeviceId]);
+
+  // Render full view - all nodes visible with full opacity
   const renderFullView = useCallback((cy) => {
     const elements = [];
-    
-    // Add all nodes
+
+    // Add all nodes with full opacity (full detail mode)
     conceptData.nodes.forEach(node => {
       const nodeColor = nodeColors[node.type] || nodeColors.default;
       elements.push({
@@ -597,19 +646,22 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
           color: nodeColor,
           borderColor: darkenColor(nodeColor, 0.2),
           speaker_id: node.speaker_id,
-          timestamp: node.timestamp
+          timestamp: node.timestamp,
+          // Full opacity in full view mode
+          nodeOpacity: 1
         }
       });
     });
 
-    // Add all edges
+    // Add all edges with full opacity
     conceptData.edges.forEach(edge => {
       elements.push({
         data: {
           id: edge.id,
           source: edge.source,
           target: edge.target,
-          label: formatEdgeLabel(edge.type)
+          label: formatEdgeLabel(edge.type),
+          edgeOpacity: 1
         }
       });
     });
@@ -626,47 +678,97 @@ function ConceptMapView({ sessionId, sessionDeviceId, socketConnection }) {
       animationDuration: 500
     }).run();
 
-    cy.off('tap', 'node'); // Remove any existing handlers
+    // Click handler for nodes to show transcripts
+    cy.off('tap', 'node');
     cy.on('tap', 'node', function(evt) {
-    console.log('Node clicked!');
-    const node = evt.target;
-    const timestamp = node.data('timestamp');
-    const nodeId = node.data('id');
+      const node = evt.target;
+      const timestamp = node.data('timestamp') || 0;
 
-    console.log('Setting panel for:', {nodeId, timestamp});
-    
-    const match = nodeId.match(/node_(\d+):(\d+)_/);
-    if (match) {
-        const deviceId = match[2];
+      setTranscriptPanel({
+        nodeText: node.data('label'),
+        timestamp: timestamp
+      });
 
-        console.log('About to set transcript panel');
-        
-        // Set panel data
-        setTranscriptPanel({
-            nodeText: node.data('label'),
-            timestamp: timestamp
+      // Use sessionDeviceId prop instead of parsing from node ID
+      // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
+      const adjustedTimestamp = timestamp - 20;
+      fetch(`/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`)
+        .then(res => res.json())
+        .then(data => {
+          setPanelTranscripts(data);
+        })
+        .catch(err => {
+          console.error('Failed to load transcripts:', err);
+          setPanelTranscripts([]);
         });
+    });
 
-        console.log('Panel should be set, fetching transcripts...');
-        
-        // Use the new simple endpoint
-        const adjustedTimestamp = timestamp - 20;
-        fetch(`/api/v1/concepts/${deviceId}/transcripts/${adjustedTimestamp}`)
-            .then(res => {
-                console.log('Fetch response:', res.status);
-                return res.json();
-            })
-            .then(data => {
-                console.log('Got transcripts:', data);
-                setPanelTranscripts(data);
-            })
-            .catch(err => {
-                console.error('Failed to load transcripts:', err);
-                setPanelTranscripts([]);
-            });
+    // Hover tooltip handlers
+    cy.on('mouseover', 'node', function(evt) {
+      const node = evt.target;
+      const renderedPos = node.renderedPosition();
+      const container = cy.container().getBoundingClientRect();
+
+      setTooltip({
+        visible: true,
+        x: container.left + renderedPos.x + 20,
+        y: container.top + renderedPos.y - 10,
+        data: {
+          label: node.data('label'),
+          type: node.data('type'),
+          timestamp: node.data('timestamp'),
+          color: node.data('color')
+        }
+      });
+    });
+
+    cy.on('mouseout', 'node', function() {
+      setTooltip(prev => ({ ...prev, visible: false }));
+    });
+  }, [conceptData, nodeColors, darkenColor, formatEdgeLabel, setTranscriptPanel, setPanelTranscripts, sessionDeviceId]);
+
+  // Build and render the graph with semantic zoom support
+  useEffect(() => {
+    const container = isExpanded ? expandedContainerRef.current : containerRef.current;
+    if (!container || !conceptData.nodes || conceptData.nodes.length === 0) return;
+
+    // Initialize Cytoscape if not already done
+    if (!cyRef.current) {
+      cyRef.current = initCytoscape(container);
+    } else {
+      cyRef.current.mount(container);
     }
-});
-  }, [conceptData, nodeColors, darkenColor, formatEdgeLabel, setTranscriptPanel, setPanelTranscripts]);
+
+    const cy = cyRef.current;
+
+    // CRITICAL: Clear ALL event handlers before mode switch
+    // This prevents semantic zoom handler from clustered view affecting full view
+    cy.removeAllListeners();
+
+    // Clear existing elements
+    cy.elements().remove();
+
+    // Render based on view mode
+    // Clustered view with semantic zoom OR full view
+    if (viewMode === 'clustered' && clusters.length > 0) {
+      renderClusteredView(cy);
+    } else {
+      renderFullView(cy);
+    }
+
+    // Fit to viewport after layout completes
+    setTimeout(() => {
+      cy.fit(50);
+      cy.center();
+    }, 600);  // Wait for layout animation to complete
+
+    // Cleanup on unmount
+    return () => {
+      if (pendingZoomRef.current) {
+        cancelAnimationFrame(pendingZoomRef.current);
+      }
+    };
+  }, [conceptData, clusters, viewMode, isExpanded, initCytoscape, renderClusteredView, renderFullView]);
 
   const applySpeakerHighlighting = useCallback(() => {
   if (!cyRef.current || viewMode !== 'full') return;
@@ -751,9 +853,17 @@ useEffect(() => {
     return positions;
   };
 
-  // Helper: Get cluster color
+  // Helper: Get cluster color - Softer, more muted palette
   const getClusterColor = (index) => {
-    const clusterColors = ['#3498db', '#e74c3c', '#27ae60', '#f39c12', '#9b59b6'];
+    const clusterColors = [
+      '#93C5FD',   // Blue-300
+      '#FDA4AF',   // Rose-300
+      '#86EFAC',   // Green-300
+      '#FCD34D',   // Amber-300
+      '#C4B5FD',   // Violet-300
+      '#67E8F9',   // Cyan-300
+      '#FDBA74',   // Orange-300
+    ];
     return clusterColors[index % clusterColors.length];
   };
 
@@ -790,19 +900,6 @@ useEffect(() => {
     
     return Object.values(edgeMap);
   };
-
-  // Toggle cluster expansion
-  const toggleClusterExpansion = useCallback((clusterId) => {
-    setExpandedClusterIds(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(clusterId)) {
-        newSet.delete(clusterId);
-      } else {
-        newSet.add(clusterId);
-      }
-      return newSet;
-    });
-  }, []);
 
   // Control functions
   const resetView = useCallback(() => {
@@ -841,65 +938,59 @@ useEffect(() => {
     <div style={{ display: 'flex', height: '100%', width: '100%' }}>
       <div className={style.conceptMapContainer} style={{ flex: 1 }}>
         <div className={style.header}>
-          <div className={style.info}>
-            <div className={style.viewToggle}>
+          {/* Left: View Toggle + Stats */}
+          <div className={style.headerLeft}>
+            <div className={style.segmentedControl}>
               <button
-                className={viewMode === 'clustered' ? style.activeView : style.viewButton}
+                className={viewMode === 'clustered' ? style.segmentedActive : style.segmentedButton}
                 onClick={() => setViewMode('clustered')}
               >
                 Clustered View
               </button>
               <button
-                className={viewMode === 'full' ? style.activeView : style.viewButton}
+                className={viewMode === 'full' ? style.segmentedActive : style.segmentedButton}
                 onClick={() => setViewMode('full')}
               >
-                Complete Graph
+                All Concepts
               </button>
             </div>
-            <span>Concepts: <strong>{displayData.nodeCount}</strong></span>
-            <span>Edges: <strong>{displayData.edgeCount}</strong></span>
-            {viewMode === 'clustered' && (
-              <span>Clusters: <strong>{clusters.length}</strong></span>
-            )}
+
+            <div className={style.statsCompact}>
+              <span><strong>{displayData.nodeCount}</strong> concepts</span>
+              <span className={style.statsDivider}>|</span>
+              <span><strong>{displayData.edgeCount}</strong> connections</span>
+            </div>
           </div>
-          <div className={style.controls}>
-            <button 
-              className={style.controlButton}
-              onClick={() => setShowSpeakerPanel(!showSpeakerPanel)}
-            >
-              {showSpeakerPanel ? 'Hide Speakers' : 'Show Speakers'}
-            </button>
-            
-            {viewMode === 'clustered' && clusters.length > 0 && (
-              <>
-                <button
-                  className={style.controlButton}
-                  onClick={() => setExpandedClusterIds(new Set(clusters.map(c => c.id)))}
-                >
-                  Expand All
-                </button>
-                <button
-                  className={style.controlButton}
-                  onClick={() => setExpandedClusterIds(new Set())}
-                >
-                  Collapse All
-                </button>
-              </>
+
+          {/* Right: Controls */}
+          <div className={style.headerRight}>
+            {viewMode === 'full' && (
+              <button
+                className={`${style.toggleButton} ${showSpeakerPanel ? style.toggleButtonActive : ''}`}
+                onClick={() => setShowSpeakerPanel(!showSpeakerPanel)}
+              >
+                {showSpeakerPanel ? 'Hide Speakers' : 'Show Speakers'}
+              </button>
             )}
-            <div className={style.spaceButtons}>
-            <button className={style.resetButton} onClick={resetView}>
-              Reset View
+            <button
+              className={`${style.toggleButton} ${viewLocked ? style.toggleButtonActive : ''}`}
+              onClick={() => setViewLocked(!viewLocked)}
+              title={viewLocked ? 'Unlock semantic zoom' : 'Lock current view'}
+            >
+              {viewLocked ? 'View Locked' : 'Lock View'}
             </button>
-            <button className={style.resetButton} onClick={exportGraph}>
+            <button className={style.actionButton} onClick={resetView}>
+              Reset
+            </button>
+            <button className={style.actionButton} onClick={exportGraph}>
               Export
             </button>
             <button
-              className={style.expandButton}
+              className={style.actionButtonPrimary}
               onClick={() => setIsExpanded(!isExpanded)}
             >
-              {isExpanded ? 'Minimize' : 'Fullscreen'}
+              {isExpanded ? 'Exit Fullscreen' : 'Fullscreen'}
             </button>
-            </div>
           </div>
         </div>
 
@@ -914,19 +1005,59 @@ useEffect(() => {
         />
 
         {isLoading && (
-          <div className={style.loading}>
-            Loading concept map...
+          <div className={style.loadingContainer}>
+            <div className={style.skeletonGraph}>
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+            </div>
+            <div className={style.loadingContent}>
+              <div className={style.loadingSpinner}></div>
+              <div className={style.loadingText}>Loading Concept Map</div>
+            </div>
           </div>
         )}
 
-        {!isLoading && conceptData.nodes.length === 0 && (
+        {!isLoading && generationStatus === 'processing' && (
+          <div className={style.loadingContainer}>
+            <div className={style.skeletonGraph}>
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+              <div className={style.skeletonNode} />
+            </div>
+            <div className={style.loadingContent}>
+              <div className={style.loadingSpinner}></div>
+              <div className={style.loadingText}>Generating Concept Map</div>
+              <div className={style.loadingSubtext}>AI is analyzing the full discussion transcript</div>
+            </div>
+          </div>
+        )}
+
+        {!isLoading && generationStatus === 'pending' && conceptData.nodes.length === 0 && (
           <div className={style.noData}>
-            No concepts available yet.
+            <div className={style.loadingText}>Concept map will be generated after the session ends</div>
+            <div className={style.loadingSubtext}>The AI analyzes the full discussion for better quality insights</div>
+          </div>
+        )}
+
+        {!isLoading && generationStatus === 'failed' && (
+          <div className={style.noData}>
+            <div className={style.loadingText} style={{ color: '#EF4444' }}>Failed to generate concept map</div>
+            <div className={style.loadingSubtext}>Please try refreshing the page or contact support</div>
+          </div>
+        )}
+
+        {!isLoading && generationStatus === 'completed' && conceptData.nodes.length === 0 && (
+          <div className={style.noData}>
+            No concepts were extracted from the discussion.
           </div>
         )}
       </div>
       
-      {console.log('Debug - showPanel:', showSpeakerPanel, 'viewMode:', viewMode, 'nodes:', conceptData.nodes?.length)}
       {showSpeakerPanel && viewMode === 'full' && (
         <SpeakerPanel 
           nodes={conceptData.nodes}
@@ -953,11 +1084,11 @@ useEffect(() => {
                 <span>Edges: <strong>{displayData.edgeCount}</strong></span>
               </div>
               <div className={style.controls}>
-                <button className={style.resetButton} onClick={resetView}>
+                <button className={style.actionButton} onClick={resetView}>
                   Reset View
                 </button>
-                <button className={style.minimizeButton} onClick={() => setIsExpanded(false)}>
-                  Minimize
+                <button className={style.actionButtonPrimary} onClick={() => setIsExpanded(false)}>
+                  Exit Fullscreen
                 </button>
               </div>
             </div>
@@ -974,77 +1105,74 @@ useEffect(() => {
     </div>
 
 )}   
-{transcriptPanel && (
-                <div style={{
-        position: 'fixed',
-        right: 0,
-        top: 0,
-        width: '400px',
-        height: '100vh',
-        backgroundColor: 'white',
-        borderLeft: '1px solid #ccc',
-        boxShadow: '-2px 0 5px rgba(0,0,0,0.1)',
-        display: 'flex',
-        flexDirection: 'column',
-        zIndex: 1000
-    }}>
-        <div style={{
-            padding: '20px',
-            borderBottom: '1px solid #eee',
-            backgroundColor: '#f8f8f8'
-        }}>
-            <h3 style={{margin: 0, marginBottom: '10px'}}>Source Transcripts</h3>
-            <p style={{margin: '5px 0', fontSize: '14px'}}>
-                <strong>Concept:</strong> {transcriptPanel.nodeText}
-            </p>
-            <p style={{margin: '5px 0', fontSize: '14px'}}>
-                <strong>Time:</strong> {Math.floor(transcriptPanel.timestamp)}s
-            </p>
-            <button 
-                onClick={() => {
-                    setTranscriptPanel(null);
-                    setPanelTranscripts([]);
-                }}
-                style={{
-                    marginTop: '10px',
-                    padding: '5px 15px',
-                    backgroundColor: '#dc3545',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer'
-                }}
+{/* Hover Tooltip */}
+      {tooltip.visible && tooltip.data && (
+        <div
+          className={`${style.nodeTooltip} ${tooltip.visible ? style.visible : ''}`}
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          <div className={style.tooltipTitle}>{tooltip.data.label}</div>
+          <div className={style.tooltipMeta}>
+            <span
+              className={style.tooltipType}
+              style={{ backgroundColor: `${tooltip.data.color}20`, color: tooltip.data.color }}
             >
-                Close
-            </button>
-        </div>
-        <div style={{
-            flex: 1,
-            overflowY: 'auto',
-            padding: '20px'
-        }}>
-            {panelTranscripts.length > 0 ? (
-                panelTranscripts.map((transcript, idx) => (
-                    <div key={idx} style={{
-                        marginBottom: '15px',
-                        padding: '10px',
-                        backgroundColor: Math.abs(transcript.start_time - transcriptPanel.timestamp) <= 5 ? 
-                            'rgba(52, 152, 219, 0.1)' : 'transparent',
-                        borderLeft: Math.abs(transcript.start_time - transcriptPanel.timestamp) <= 5 ? 
-                            '4px solid #3498db' : 'none',
-                        paddingLeft: Math.abs(transcript.start_time - transcriptPanel.timestamp) <= 5 ? 
-                            '14px' : '10px'
-                    }}>
-                        <div style={{fontSize: '12px', color: '#666', marginBottom: '5px'}}>
-                            {Math.floor(transcript.start_time)}s - {transcript.speaker_alias || 'Unknown'}
-                        </div>
-                        <div>{transcript.transcript}</div>
-                    </div>
-                ))
-            ) : (
-                <p>Loading transcripts...</p>
+              {tooltip.data.type}
+            </span>
+            {tooltip.data.timestamp > 0 && (
+              <span>{Math.floor(tooltip.data.timestamp)}s</span>
             )}
+          </div>
         </div>
+      )}
+
+{transcriptPanel && (
+        <div className={style.transcriptPanel}>
+          <div className={style.transcriptHeader}>
+            <h3>Source Transcripts</h3>
+            <div className={style.transcriptConcept}>
+              {transcriptPanel.nodeText}
+            </div>
+            <div className={style.transcriptTime}>
+              At {Math.floor(transcriptPanel.timestamp)}s into discussion
+            </div>
+            <button
+              className={style.transcriptCloseBtn}
+              onClick={() => {
+                setTranscriptPanel(null);
+                setPanelTranscripts([]);
+              }}
+            >
+              Close
+            </button>
+          </div>
+          <div className={style.transcriptList}>
+            {panelTranscripts.length > 0 ? (
+              panelTranscripts.map((transcript, idx) => {
+                const isHighlighted = Math.abs(transcript.start_time - transcriptPanel.timestamp) <= 5;
+                return (
+                  <div
+                    key={idx}
+                    className={`${style.transcriptItem} ${isHighlighted ? style.highlighted : ''}`}
+                  >
+                    <div className={style.transcriptItemMeta}>
+                      <span className={style.speakerDot}></span>
+                      <span>{transcript.speaker_alias || 'Unknown'}</span>
+                      <span>{Math.floor(transcript.start_time)}s</span>
+                    </div>
+                    <div className={style.transcriptItemText}>
+                      {transcript.transcript}
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className={style.loading}>
+                <div className={style.loadingSpinner}></div>
+                <div className={style.loadingText}>Loading transcripts...</div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </>
