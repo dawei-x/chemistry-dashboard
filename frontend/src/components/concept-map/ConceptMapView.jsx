@@ -171,6 +171,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       // Calculate opacity values for current zoom
       const opacities = calculateOpacities(zoom);
 
+      // Determine if we should hide concept nodes completely (for equal cluster sizing)
+      const shouldHideNodes = zoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
+
       // Use batch for performance - all updates in single redraw
       // CSS transitions handle the smooth animation
       cy.batch(() => {
@@ -181,14 +184,17 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           node.data('textOpacity', opacities.cluster.textOpacity);
         });
 
-        // Update concept nodes - simple opacity update, CSS handles animation
+        // Update concept nodes - use display:none at low zoom for equal cluster sizes
         cy.nodes('[!isCluster]').forEach(node => {
           node.data('nodeOpacity', opacities.node.opacity);
+          // Hide completely at low zoom so compound nodes have equal sizes
+          node.style('display', shouldHideNodes ? 'none' : 'element');
         });
 
         // Update intra-cluster edges
         cy.edges('[!interCluster]').forEach(edge => {
           edge.data('edgeOpacity', opacities.intraEdge.opacity);
+          edge.style('display', shouldHideNodes ? 'none' : 'element');
         });
 
         // Update inter-cluster edges
@@ -492,6 +498,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           // Cache the position
           clusterPositionCache.set(node.id, position);
 
+          // Determine if nodes should be hidden initially (for equal cluster sizing)
+          const shouldHideInitially = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
+
           elements.push({
             data: {
               id: node.id,
@@ -502,10 +511,14 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
               borderColor: darkenColor(nodeColor, 0.2),
               timestamp: node.timestamp,
               clusterId: cluster.id,
+              speaker_id: node.speaker_id,
+              speaker_alias: node.speaker_alias,
               // Dynamic opacity for semantic zoom
               nodeOpacity: initialOpacities.node.opacity
             },
-            position: position
+            position: position,
+            // Hide initially at low zoom for equal cluster sizes
+            style: shouldHideInitially ? { display: 'none' } : {}
           });
         });
 
@@ -514,6 +527,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
 
         // Add edges within cluster
         if (cluster.edges) {
+          // Determine if edges should be hidden initially
+          const shouldHideInitially = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
+
           cluster.edges.forEach(edge => {
             elements.push({
               data: {
@@ -523,7 +539,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
                 label: formatEdgeLabel(edge.type),
                 // Dynamic opacity for semantic zoom
                 edgeOpacity: initialOpacities.intraEdge.opacity
-              }
+              },
+              // Hide initially at low zoom for equal cluster sizes
+              style: shouldHideInitially ? { display: 'none' } : {}
             });
           });
         }
@@ -570,21 +588,35 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     // Click handler for concept nodes to show transcripts
     cy.on('tap', 'node[!isCluster]', function(evt) {
       const node = evt.target;
-      const timestamp = node.data('timestamp') || 0;
+      const timestamp = node.data('timestamp');
 
       setTranscriptPanel({
         nodeText: node.data('label'),
-        timestamp: timestamp
+        timestamp: timestamp || 0,
+        speakerAlias: node.data('speaker_alias')
       });
+
+      // Handle missing or invalid timestamps
+      if (timestamp === undefined || timestamp === null || timestamp < 0) {
+        console.warn('Concept has no valid timestamp:', node.data('label'));
+        setPanelTranscripts([]);
+        return;
+      }
 
       // Use sessionDeviceId prop instead of parsing from node ID
       // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
-      const adjustedTimestamp = timestamp - 15;
+      // Use max(0, timestamp - 15) to avoid negative timestamps
+      const adjustedTimestamp = Math.max(0, Math.floor(timestamp) - 15);
       const url = `/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`;
       fetch(url)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return res.json();
+        })
         .then(data => {
-          setPanelTranscripts(data);
+          setPanelTranscripts(Array.isArray(data) ? data : []);
         })
         .catch(err => {
           console.error('Failed to load transcripts:', err);
@@ -592,8 +624,14 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
         });
     });
 
-    // Hover tooltip handlers
+    // Hover tooltip handlers - only show when zoomed in enough to see concepts
     cy.on('mouseover', 'node[!isCluster]', function(evt) {
+      const currentZoom = cy.zoom();
+      // Only show tooltip when concepts are visible (above CLUSTERS_ONLY threshold)
+      if (currentZoom < ZOOM_THRESHOLDS.CLUSTERS_EXPANDED) {
+        return; // Don't show tooltip when concepts are hidden/faded
+      }
+
       const node = evt.target;
       const renderedPos = node.renderedPosition();
       const container = cy.container().getBoundingClientRect();
@@ -606,7 +644,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           label: node.data('label'),
           type: node.data('type'),
           timestamp: node.data('timestamp'),
-          color: node.data('color')
+          color: node.data('color'),
+          speakerId: node.data('speaker_id'),
+          speakerAlias: node.data('speaker_alias')
         }
       });
     });
@@ -646,6 +686,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           color: nodeColor,
           borderColor: darkenColor(nodeColor, 0.2),
           speaker_id: node.speaker_id,
+          speaker_alias: node.speaker_alias,
           timestamp: node.timestamp,
           // Full opacity in full view mode
           nodeOpacity: 1
@@ -682,20 +723,34 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     cy.off('tap', 'node');
     cy.on('tap', 'node', function(evt) {
       const node = evt.target;
-      const timestamp = node.data('timestamp') || 0;
+      const timestamp = node.data('timestamp');
 
       setTranscriptPanel({
         nodeText: node.data('label'),
-        timestamp: timestamp
+        timestamp: timestamp || 0,
+        speakerAlias: node.data('speaker_alias')
       });
+
+      // Handle missing or invalid timestamps
+      if (timestamp === undefined || timestamp === null || timestamp < 0) {
+        console.warn('Concept has no valid timestamp:', node.data('label'));
+        setPanelTranscripts([]);
+        return;
+      }
 
       // Use sessionDeviceId prop instead of parsing from node ID
       // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
-      const adjustedTimestamp = timestamp - 20;
+      // Use max(0, timestamp - 20) to avoid negative timestamps
+      const adjustedTimestamp = Math.max(0, Math.floor(timestamp) - 20);
       fetch(`/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`)
-        .then(res => res.json())
+        .then(res => {
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
+          return res.json();
+        })
         .then(data => {
-          setPanelTranscripts(data);
+          setPanelTranscripts(Array.isArray(data) ? data : []);
         })
         .catch(err => {
           console.error('Failed to load transcripts:', err);
@@ -717,7 +772,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           label: node.data('label'),
           type: node.data('type'),
           timestamp: node.data('timestamp'),
-          color: node.data('color')
+          color: node.data('color'),
+          speakerId: node.data('speaker_id'),
+          speakerAlias: node.data('speaker_alias')
         }
       });
     });
@@ -1119,6 +1176,9 @@ useEffect(() => {
             >
               {tooltip.data.type}
             </span>
+            {tooltip.data.speakerAlias && (
+              <span style={{ color: '#64748B' }}>by {tooltip.data.speakerAlias}</span>
+            )}
             {tooltip.data.timestamp > 0 && (
               <span>{Math.floor(tooltip.data.timestamp)}s</span>
             )}
