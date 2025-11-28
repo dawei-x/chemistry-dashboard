@@ -215,7 +215,6 @@ function AppInfographicsComparison(props) {
     <ConceptMapView
       sessionId={props.session?.id}
       sessionDeviceId={props.sessionDevice?.id}
-      socketConnection={props.socket}  // Will add socket later
     />
   </AppSectionBoxComponent>
 )}
