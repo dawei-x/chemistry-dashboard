@@ -179,11 +179,30 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       // Use batch for performance - all updates in single redraw
       // CSS transitions handle the smooth animation
       cy.batch(() => {
-        // Update cluster nodes
+        // Update cluster nodes with explicit sizing control
         cy.nodes('[isCluster]').forEach(node => {
           node.data('bgOpacity', opacities.cluster.bgOpacity);
           node.data('borderOpacity', opacities.cluster.borderOpacity);
           node.data('textOpacity', opacities.cluster.textOpacity);
+
+          // Force uniform cluster size when zoomed out (children hidden)
+          // This ensures all clusters appear equal size in overview mode
+          if (shouldHideNodes) {
+            node.style({
+              'width': '180px',
+              'height': '120px',
+              'shape': 'ellipse',
+              'text-valign': 'center'
+            });
+          } else {
+            // Let clusters auto-size based on children when expanded
+            node.style({
+              'width': 'auto',
+              'height': 'auto',
+              'shape': 'round-rectangle',
+              'text-valign': 'top'
+            });
+          }
         });
 
         // Update concept nodes - use display:none at low zoom for equal cluster sizes
@@ -233,13 +252,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
             'font-size': '16px',
             'font-weight': 'bold',
             'text-opacity': 'data(textOpacity)',  // Dynamic opacity
-            'padding': '30px',
+            'padding': '40px',  // Increased padding for better spacing
             'text-margin-y': 10,
-            'min-width': '200px',
-            'min-height': '150px',
+            'min-width': '180px',
+            'min-height': '120px',
             'z-index': 1,
-            // CSS transitions for smooth opacity changes
-            'transition-property': 'background-opacity, border-opacity, text-opacity',
+            // CSS transitions for smooth opacity AND size changes
+            'transition-property': 'background-opacity, border-opacity, text-opacity, width, height',
             'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
         },
@@ -456,16 +475,22 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
   // All elements are pre-rendered, visibility controlled via opacity
   const renderClusteredView = useCallback((cy) => {
     const elements = [];
-    const clusterPositions = calculateClusterPositions(clusters.length);
+    // Pass cluster sizes for dynamic spacing calculation
+    const clusterSizes = clusters.map(c => c.nodes?.length || c.node_count || 0);
+    const clusterPositions = calculateClusterPositions(clusters.length, clusterSizes);
 
     // Get initial opacities based on current zoom (default to 1.0 for initial render)
     const initialZoom = cy.zoom() || 1.0;
     const initialOpacities = calculateOpacities(initialZoom);
 
+    // Determine initial cluster sizing based on zoom
+    const shouldStartCollapsed = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
+
     clusters.forEach((cluster, index) => {
       const clusterColor = getClusterColor(index);
 
       // Add cluster parent node with opacity data
+      // Start with uniform size if zoomed out, auto-size if zoomed in
       elements.push({
         data: {
           id: `cluster_${cluster.id}`,
@@ -480,7 +505,14 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           borderOpacity: initialOpacities.cluster.borderOpacity,
           textOpacity: initialOpacities.cluster.textOpacity
         },
-        position: clusterPositions[index]
+        position: clusterPositions[index],
+        // Apply uniform sizing when starting zoomed out
+        style: shouldStartCollapsed ? {
+          'width': '180px',
+          'height': '120px',
+          'shape': 'ellipse',
+          'text-valign': 'center'
+        } : {}
       });
 
       // ALWAYS add individual nodes (visibility controlled by opacity)
@@ -670,10 +702,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     cy.layout({
       name: 'dagre',
       rankDir: 'TB',
-      padding: 50,
-      spacingFactor: 1.2,
+      padding: 80,          // Increased from 50 for better cluster separation
+      spacingFactor: 1.5,   // Increased from 1.2 for more breathing room
+      nodeSep: 60,          // Horizontal separation between nodes
+      rankSep: 80,          // Vertical separation between ranks
       animate: true,
-      animationDuration: 500
+      animationDuration: 500,
+      fit: true
     }).run();
 
     // Apply initial opacity based on zoom level after layout
@@ -896,12 +931,24 @@ useEffect(() => {
   applySpeakerHighlighting();
   }, [selectedSpeakers, applySpeakerHighlighting]);
 
-  // Helper: Calculate cluster positions in a circle
-  const calculateClusterPositions = (count) => {
+  // Helper: Calculate cluster positions in a circle with dynamic spacing
+  const calculateClusterPositions = (count, clusterSizes = []) => {
     const positions = [];
-    const radius = 300;
     const center = { x: 400, y: 300 };
-    
+
+    // Dynamic radius based on cluster count and sizes
+    // More clusters or larger clusters need more space to avoid overlap when expanded
+    const maxClusterSize = clusterSizes.length > 0 ? Math.max(...clusterSizes, 5) : 5;
+    const baseRadius = 200;
+    const perClusterSpace = 220; // Space needed per cluster when expanded
+    const circumferenceNeeded = count * perClusterSpace;
+    const radiusFromCircumference = circumferenceNeeded / (2 * Math.PI);
+
+    // Add extra space for larger clusters
+    const sizeBonus = Math.sqrt(maxClusterSize) * 25;
+
+    const radius = Math.max(baseRadius, radiusFromCircumference + sizeBonus);
+
     for (let i = 0; i < count; i++) {
       const angle = (2 * Math.PI * i) / count - Math.PI / 2;
       positions.push({
@@ -915,16 +962,28 @@ useEffect(() => {
   // Helper: Calculate node positions within a cluster
   const calculateNodePositions = (count, clusterCenter) => {
     const positions = [];
+
+    if (count === 0) return positions;
+
+    // Single node - center it
+    if (count === 1) {
+      return [{ x: clusterCenter.x, y: clusterCenter.y }];
+    }
+
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
-    const spacing = 100;
-    
+    // Increased spacing to prevent overlap (was 100)
+    const spacing = 130;
+
     for (let i = 0; i < count; i++) {
       const row = Math.floor(i / cols);
       const col = i % cols;
+      // Center the grid properly
+      const offsetX = (col - (cols - 1) / 2) * spacing;
+      const offsetY = (row - (rows - 1) / 2) * spacing;
       positions.push({
-        x: clusterCenter.x + (col - cols / 2) * spacing,
-        y: clusterCenter.y + (row - rows / 2) * spacing
+        x: clusterCenter.x + offsetX,
+        y: clusterCenter.y + offsetY
       });
     }
     return positions;
