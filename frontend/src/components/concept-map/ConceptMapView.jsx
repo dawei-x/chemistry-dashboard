@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import Cytoscape from 'cytoscape';
 import dagre from 'cytoscape-dagre';
-import cola from 'cytoscape-cola';
+import coseBilkent from 'cytoscape-cose-bilkent';
 import style from './concept-map.module.css';
 import { SpeakerPanel } from '../speaker-panel/SpeakerPanel';
 
@@ -9,7 +9,7 @@ import { SpeakerPanel } from '../speaker-panel/SpeakerPanel';
 
 // Register layouts
 Cytoscape.use(dagre);
-Cytoscape.use(cola);
+Cytoscape.use(coseBilkent);
 
 // Semantic zoom thresholds - Google Maps style detail levels
 const ZOOM_THRESHOLDS = {
@@ -179,36 +179,17 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       // Use batch for performance - all updates in single redraw
       // CSS transitions handle the smooth animation
       cy.batch(() => {
-        // Update cluster nodes with explicit sizing control
+        // Update cluster nodes - just opacity, no size manipulation
         cy.nodes('[isCluster]').forEach(node => {
           node.data('bgOpacity', opacities.cluster.bgOpacity);
           node.data('borderOpacity', opacities.cluster.borderOpacity);
           node.data('textOpacity', opacities.cluster.textOpacity);
-
-          // Force uniform cluster size when zoomed out (children hidden)
-          // This ensures all clusters appear equal size in overview mode
-          if (shouldHideNodes) {
-            node.style({
-              'width': '180px',
-              'height': '120px',
-              'shape': 'ellipse',
-              'text-valign': 'center'
-            });
-          } else {
-            // Let clusters auto-size based on children when expanded
-            node.style({
-              'width': 'auto',
-              'height': 'auto',
-              'shape': 'round-rectangle',
-              'text-valign': 'top'
-            });
-          }
+          // Let clusters size naturally based on content - no forced sizing
         });
 
-        // Update concept nodes - use display:none at low zoom for equal cluster sizes
+        // Update concept nodes - control visibility based on zoom
         cy.nodes('[!isCluster]').forEach(node => {
           node.data('nodeOpacity', opacities.node.opacity);
-          // Hide completely at low zoom so compound nodes have equal sizes
           node.style('display', shouldHideNodes ? 'none' : 'element');
         });
 
@@ -236,7 +217,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     const cy = Cytoscape({
       container: container,
       style: [
-        // Cluster (parent) node styles - with dynamic opacity for semantic zoom
+        // Cluster (parent) node styles - clean, simple, auto-sizing
         {
           selector: 'node[isCluster]',
           style: {
@@ -249,29 +230,16 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
             'label': 'data(label)',
             'text-valign': 'top',
             'text-halign': 'center',
-            'font-size': '16px',
+            'font-size': '14px',
             'font-weight': 'bold',
             'text-opacity': 'data(textOpacity)',  // Dynamic opacity
-            'padding': '40px',  // Increased padding for better spacing
-            'text-margin-y': 10,
-            'min-width': '180px',
-            'min-height': '120px',
+            'padding': '25px',
+            'text-margin-y': 8,
             'z-index': 1,
-            // CSS transitions for smooth opacity AND size changes
-            'transition-property': 'background-opacity, border-opacity, text-opacity, width, height',
+            // No min-width/min-height - let cose-bilkent handle sizing
+            // CSS transitions for smooth opacity changes
+            'transition-property': 'background-opacity, border-opacity, text-opacity',
             'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
-          }
-        },
-        // Collapsed cluster styles (when all collapsed)
-        {
-          selector: 'node[isCluster][collapsed]',
-          style: {
-            'shape': 'ellipse',
-            'width': '180px',
-            'height': '120px',
-            'text-valign': 'center',
-            'padding': '10px',
-            'cursor': 'pointer'
           }
         },
         // Regular node styles - with dynamic opacity for semantic zoom
@@ -483,14 +451,10 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     const initialZoom = cy.zoom() || 1.0;
     const initialOpacities = calculateOpacities(initialZoom);
 
-    // Determine initial cluster sizing based on zoom
-    const shouldStartCollapsed = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
-
     clusters.forEach((cluster, index) => {
       const clusterColor = getClusterColor(index);
 
-      // Add cluster parent node with opacity data
-      // Start with uniform size if zoomed out, auto-size if zoomed in
+      // Add cluster parent node - let it size naturally based on content
       elements.push({
         data: {
           id: `cluster_${cluster.id}`,
@@ -505,14 +469,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           borderOpacity: initialOpacities.cluster.borderOpacity,
           textOpacity: initialOpacities.cluster.textOpacity
         },
-        position: clusterPositions[index],
-        // Apply uniform sizing when starting zoomed out
-        style: shouldStartCollapsed ? {
-          'width': '180px',
-          'height': '120px',
-          'shape': 'ellipse',
-          'text-valign': 'center'
-        } : {}
+        position: clusterPositions[index]
+        // No forced styling - cose-bilkent will handle sizing
       });
 
       // ALWAYS add individual nodes (visibility controlled by opacity)
@@ -532,9 +490,6 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           // Cache the position
           clusterPositionCache.set(node.id, position);
 
-          // Determine if nodes should be hidden initially (for equal cluster sizing)
-          const shouldHideInitially = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
-
           elements.push({
             data: {
               id: node.id,
@@ -550,9 +505,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
               // Dynamic opacity for semantic zoom
               nodeOpacity: initialOpacities.node.opacity
             },
-            position: position,
-            // Hide initially at low zoom for equal cluster sizes
-            style: shouldHideInitially ? { display: 'none' } : {}
+            position: position
+            // Visibility controlled by handleSemanticZoom after layout
           });
         });
 
@@ -561,9 +515,6 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
 
         // Add edges within cluster
         if (cluster.edges) {
-          // Determine if edges should be hidden initially
-          const shouldHideInitially = initialZoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
-
           cluster.edges.forEach(edge => {
             elements.push({
               data: {
@@ -573,9 +524,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
                 label: formatEdgeLabel(edge.type),
                 // Dynamic opacity for semantic zoom
                 edgeOpacity: initialOpacities.intraEdge.opacity
-              },
-              // Hide initially at low zoom for equal cluster sizes
-              style: shouldHideInitially ? { display: 'none' } : {}
+              }
+              // Visibility controlled by handleSemanticZoom after layout
             });
           });
         }
@@ -698,12 +648,26 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       setTooltip(prev => ({ ...prev, visible: false }));
     });
 
-    // Use preset layout to keep our manually calculated positions
-    // DO NOT use dagre here - it overwrites positions and doesn't account for expanded cluster sizes
+    // Use cose-bilkent layout - designed for compound node graphs
+    // It handles cluster sizing and node positioning automatically
     cy.layout({
-      name: 'preset',
+      name: 'cose-bilkent',
+      quality: 'default',
+      nodeDimensionsIncludeLabels: true,
       fit: true,
-      padding: 50
+      padding: 50,
+      randomize: false,
+      nodeRepulsion: 6000,
+      idealEdgeLength: 120,
+      edgeElasticity: 0.45,
+      nestingFactor: 0.1,
+      gravity: 0.20,
+      numIter: 2500,
+      tile: true,
+      tilingPaddingVertical: 20,
+      tilingPaddingHorizontal: 20,
+      animate: 'end',
+      animationDuration: 500
     }).run();
 
     // Apply initial opacity based on zoom level after layout
@@ -940,14 +904,14 @@ useEffect(() => {
     }
 
     // Calculate the maximum expanded cluster size
-    // Each node is 180x44, spacing is 130px
+    // Each node is 180x44, spacing is 220px
     // A cluster with N nodes in a sqrt(N) x sqrt(N) grid:
     const maxNodes = clusterSizes.length > 0 ? Math.max(...clusterSizes, 1) : 5;
     const cols = Math.ceil(Math.sqrt(maxNodes));
     const rows = Math.ceil(maxNodes / cols);
     const nodeWidth = 180;
     const nodeHeight = 44;
-    const nodeSpacing = 130;
+    const nodeSpacing = 220;
 
     // Estimated expanded cluster dimensions
     const expandedWidth = cols * nodeWidth + (cols - 1) * nodeSpacing + 80; // +80 for padding
@@ -995,8 +959,8 @@ useEffect(() => {
 
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
-    // Increased spacing to prevent overlap (was 100)
-    const spacing = 130;
+    // Spacing must be > nodeWidth (180px) to prevent overlap
+    const spacing = 220;
 
     for (let i = 0; i < count; i++) {
       const row = Math.floor(i / cols);
