@@ -698,17 +698,12 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       setTooltip(prev => ({ ...prev, visible: false }));
     });
 
-    // Run layout once - positions will be cached, no recalculation on zoom
+    // Use preset layout to keep our manually calculated positions
+    // DO NOT use dagre here - it overwrites positions and doesn't account for expanded cluster sizes
     cy.layout({
-      name: 'dagre',
-      rankDir: 'TB',
-      padding: 80,          // Increased from 50 for better cluster separation
-      spacingFactor: 1.5,   // Increased from 1.2 for more breathing room
-      nodeSep: 60,          // Horizontal separation between nodes
-      rankSep: 80,          // Vertical separation between ranks
-      animate: true,
-      animationDuration: 500,
-      fit: true
+      name: 'preset',
+      fit: true,
+      padding: 50
     }).run();
 
     // Apply initial opacity based on zoom level after layout
@@ -932,22 +927,50 @@ useEffect(() => {
   }, [selectedSpeakers, applySpeakerHighlighting]);
 
   // Helper: Calculate cluster positions in a circle with dynamic spacing
+  // Spacing is calculated based on EXPANDED cluster sizes to prevent overlap when zoomed in
   const calculateClusterPositions = (count, clusterSizes = []) => {
     const positions = [];
-    const center = { x: 400, y: 300 };
+    const center = { x: 500, y: 400 };
 
-    // Dynamic radius based on cluster count and sizes
-    // More clusters or larger clusters need more space to avoid overlap when expanded
-    const maxClusterSize = clusterSizes.length > 0 ? Math.max(...clusterSizes, 5) : 5;
-    const baseRadius = 200;
-    const perClusterSpace = 220; // Space needed per cluster when expanded
-    const circumferenceNeeded = count * perClusterSpace;
-    const radiusFromCircumference = circumferenceNeeded / (2 * Math.PI);
+    if (count === 0) return positions;
 
-    // Add extra space for larger clusters
-    const sizeBonus = Math.sqrt(maxClusterSize) * 25;
+    // For a single cluster, center it
+    if (count === 1) {
+      return [{ x: center.x, y: center.y }];
+    }
 
-    const radius = Math.max(baseRadius, radiusFromCircumference + sizeBonus);
+    // Calculate the maximum expanded cluster size
+    // Each node is 180x44, spacing is 130px
+    // A cluster with N nodes in a sqrt(N) x sqrt(N) grid:
+    const maxNodes = clusterSizes.length > 0 ? Math.max(...clusterSizes, 1) : 5;
+    const cols = Math.ceil(Math.sqrt(maxNodes));
+    const rows = Math.ceil(maxNodes / cols);
+    const nodeWidth = 180;
+    const nodeHeight = 44;
+    const nodeSpacing = 130;
+
+    // Estimated expanded cluster dimensions
+    const expandedWidth = cols * nodeWidth + (cols - 1) * nodeSpacing + 80; // +80 for padding
+    const expandedHeight = rows * nodeHeight + (rows - 1) * nodeSpacing + 80;
+    const maxDimension = Math.max(expandedWidth, expandedHeight);
+
+    // Minimum spacing between cluster centers = max expanded dimension + buffer
+    const minClusterSpacing = maxDimension + 100;
+
+    // Calculate radius to ensure clusters don't overlap when expanded
+    // For N clusters in a circle: spacing = 2 * radius * sin(π/N)
+    // So: radius = spacing / (2 * sin(π/N))
+    let radius;
+    if (count === 2) {
+      // Two clusters: place them side by side
+      radius = minClusterSpacing / 2;
+    } else {
+      // For 3+ clusters in a circle
+      radius = minClusterSpacing / (2 * Math.sin(Math.PI / count));
+    }
+
+    // Ensure minimum radius
+    radius = Math.max(radius, 250);
 
     for (let i = 0; i < count; i++) {
       const angle = (2 * Math.PI * i) / count - Math.PI / 2;
