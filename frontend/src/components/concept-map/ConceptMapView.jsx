@@ -217,11 +217,11 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     const cy = Cytoscape({
       container: container,
       style: [
-        // Cluster (parent) node styles - clean, simple, auto-sizing
+        // Cluster (parent) node styles - organic ellipse shape, auto-sizing
         {
           selector: 'node[isCluster]',
           style: {
-            'shape': 'round-rectangle',
+            'shape': 'ellipse',  // Organic, casual shape for clusters
             'background-color': 'data(color)',
             'background-opacity': 'data(bgOpacity)',  // Dynamic opacity
             'border-width': 2,
@@ -233,10 +233,11 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
             'font-size': '14px',
             'font-weight': 'bold',
             'text-opacity': 'data(textOpacity)',  // Dynamic opacity
-            'padding': '25px',
-            'text-margin-y': 8,
+            'text-wrap': 'wrap',  // Allow multi-line cluster labels
+            'text-max-width': '200px',
+            'padding': '30px',
+            'text-margin-y': -5,  // Position label inside the ellipse
             'z-index': 1,
-            // No min-width/min-height - let cose-bilkent handle sizing
             // CSS transitions for smooth opacity changes
             'transition-property': 'background-opacity, border-opacity, text-opacity',
             'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
@@ -247,8 +248,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           selector: 'node[!isCluster]',
           style: {
             'shape': 'round-rectangle',  // Better for text
-            'width': '180px',            // Increased from 140px
-            'height': 44,                // Increased from 36
+            'width': 'label',            // Auto-width based on label
+            'height': 'label',           // Auto-height based on label
+            'padding': '12px',           // Padding around text
             'label': 'data(label)',
             'text-valign': 'center',
             'text-halign': 'center',
@@ -257,12 +259,12 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
             'border-width': 2,
             'border-color': 'data(borderColor)',
             'border-opacity': 0.6,
-            'font-size': '12px',         // Increased from 11px
+            'font-size': '12px',
             'font-weight': 500,
             'color': '#ffffff',
             'text-opacity': 'data(nodeOpacity)',  // Dynamic opacity
-            'text-wrap': 'ellipsis',
-            'text-max-width': '160px',   // Increased from 125px
+            'text-wrap': 'wrap',         // Allow multi-line text
+            'text-max-width': '180px',   // Max width before wrapping
             'z-index': 10,
             // Subtle shadow effect via overlay
             'overlay-opacity': 0,
@@ -655,17 +657,17 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       quality: 'default',
       nodeDimensionsIncludeLabels: true,
       fit: true,
-      padding: 50,
+      padding: 60,
       randomize: false,
-      nodeRepulsion: 6000,
-      idealEdgeLength: 120,
+      nodeRepulsion: 8000,      // Higher repulsion for variable-sized nodes
+      idealEdgeLength: 150,     // More space between connected nodes
       edgeElasticity: 0.45,
       nestingFactor: 0.1,
-      gravity: 0.20,
+      gravity: 0.15,            // Lower gravity for more spread
       numIter: 2500,
       tile: true,
-      tilingPaddingVertical: 20,
-      tilingPaddingHorizontal: 20,
+      tilingPaddingVertical: 30,
+      tilingPaddingHorizontal: 30,
       animate: 'end',
       animationDuration: 500
     }).run();
@@ -904,18 +906,18 @@ useEffect(() => {
     }
 
     // Calculate the maximum expanded cluster size
-    // Each node is 180x44, spacing is 220px
-    // A cluster with N nodes in a sqrt(N) x sqrt(N) grid:
+    // Nodes are variable-sized now, estimate based on max text width
     const maxNodes = clusterSizes.length > 0 ? Math.max(...clusterSizes, 1) : 5;
     const cols = Math.ceil(Math.sqrt(maxNodes));
     const rows = Math.ceil(maxNodes / cols);
-    const nodeWidth = 180;
-    const nodeHeight = 44;
-    const nodeSpacing = 220;
+    const estimatedNodeWidth = 200;  // Estimated for wrapped text
+    const estimatedNodeHeight = 60;  // Estimated for 2-3 lines
+    const nodeSpacingX = 250;
+    const nodeSpacingY = 120;
 
     // Estimated expanded cluster dimensions
-    const expandedWidth = cols * nodeWidth + (cols - 1) * nodeSpacing + 80; // +80 for padding
-    const expandedHeight = rows * nodeHeight + (rows - 1) * nodeSpacing + 80;
+    const expandedWidth = cols * estimatedNodeWidth + (cols - 1) * nodeSpacingX + 100;
+    const expandedHeight = rows * estimatedNodeHeight + (rows - 1) * nodeSpacingY + 100;
     const maxDimension = Math.max(expandedWidth, expandedHeight);
 
     // Minimum spacing between cluster centers = max expanded dimension + buffer
@@ -947,6 +949,7 @@ useEffect(() => {
   };
 
   // Helper: Calculate node positions within a cluster
+  // Nodes can be variable-sized now, so use generous spacing
   const calculateNodePositions = (count, clusterCenter) => {
     const positions = [];
 
@@ -959,15 +962,16 @@ useEffect(() => {
 
     const cols = Math.ceil(Math.sqrt(count));
     const rows = Math.ceil(count / cols);
-    // Spacing must be > nodeWidth (180px) to prevent overlap
-    const spacing = 220;
+    // Generous spacing for variable-sized nodes with wrapped text
+    const spacingX = 250;  // Horizontal spacing
+    const spacingY = 120;  // Vertical spacing (nodes are shorter than wide)
 
     for (let i = 0; i < count; i++) {
       const row = Math.floor(i / cols);
       const col = i % cols;
       // Center the grid properly
-      const offsetX = (col - (cols - 1) / 2) * spacing;
-      const offsetY = (row - (rows - 1) / 2) * spacing;
+      const offsetX = (col - (cols - 1) / 2) * spacingX;
+      const offsetY = (row - (rows - 1) / 2) * spacingY;
       positions.push({
         x: clusterCenter.x + offsetX,
         y: clusterCenter.y + offsetY
