@@ -23,12 +23,24 @@ from twisted.python import log
 from twisted.internet import reactor, task
 from autobahn.twisted.websocket import WebSocketServerFactory
 from autobahn.twisted.websocket import WebSocketServerProtocol
-from asr_connectors.google_asr_connector import GoogleASR
 from features_detector import features_detector
 from keyword_detector import keyword_detector
 from speaker_tagging import speaker_tagging
 from speechbrain.inference import SpeakerRecognition
 from sentence_transformers import SentenceTransformer
+
+
+def get_asr_connector():
+    """Get appropriate ASR connector based on config."""
+    provider = cf.asr()
+    if provider == 'google-chirp2':
+        from asr_connectors.google_chirp2_connector import GoogleChirp2ASR
+        return GoogleChirp2ASR
+    else:
+        # Default to V1 for backward compatibility
+        from asr_connectors.google_asr_connector import GoogleASR
+        return GoogleASR
+
 
 cm = ConnectionManager()
 semantic_model = SentenceTransformer("all-mpnet-base-v2")
@@ -204,7 +216,8 @@ class ServerProtocol(WebSocketServerProtocol):
         self.audio_buffer = AudioBuffer(self.config)
         self.asr_audio_queue = queue.Queue()
         self.asr_transcript_queue = queue.Queue()
-        self.asr = GoogleASR(self.asr_audio_queue, self.asr_transcript_queue, self.config, self.stream_data,self.interval)
+        ASRConnector = get_asr_connector()
+        self.asr = ASRConnector(self.asr_audio_queue, self.asr_transcript_queue, self.config, self.stream_data, self.interval)
         self.asr.start()
         self.processor = AudioProcessor(self.audio_buffer, self.asr_transcript_queue, diarization_model, semantic_model, self.config)
         self.processor.start()
