@@ -3,13 +3,139 @@ import logging
 from datetime import datetime
 from app import db
 from tables.concept_session import ConceptSession
-from tables.concept_node import ConceptNode  
+from tables.concept_node import ConceptNode
 from tables.concept_edge import ConceptEdge
 from tables.concept_cluster import ConceptCluster
 import database as db_helper
 
 # Create Blueprint for concept mapping routes
 concept_bp = Blueprint('concepts', __name__)
+
+
+@concept_bp.route('/api/v1/concepts/regenerate/<int:session_device_id>', methods=['POST'])
+def regenerate_concepts(session_device_id):
+    """
+    Manually trigger concept map regeneration for a session device.
+    This endpoint can be used to re-run extraction or update existing results.
+    """
+    try:
+        # Check if session device exists
+        session_device = db_helper.get_session_devices(id=session_device_id)
+        if not session_device:
+            return jsonify({'error': 'Session device not found'}), 404
+
+        # Check if concept session exists and is already processing
+        concept_session = ConceptSession.query.filter_by(
+            session_device_id=session_device_id
+        ).first()
+
+        if concept_session and concept_session.generation_status == 'processing':
+            return jsonify({
+                'status': 'processing',
+                'message': 'Concept generation already in progress',
+                'concept_session_id': concept_session.id
+            }), 202
+
+        # Trigger regeneration
+        from concept_generation_service import generate_concepts_for_session_device
+        result = generate_concepts_for_session_device(session_device_id)
+
+        if result:
+            return jsonify({
+                'status': 'completed',
+                'message': 'Concepts regenerated successfully',
+                'concept_session_id': result.id,
+                'node_count': ConceptNode.query.filter_by(concept_session_id=result.id).count(),
+                'edge_count': ConceptEdge.query.filter_by(concept_session_id=result.id).count()
+            }), 200
+        else:
+            return jsonify({
+                'error': 'Failed to regenerate concepts'
+            }), 500
+
+    except Exception as e:
+        logging.error(f"Error regenerating concepts: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+def _index_session_for_rag(session_device_id: int) -> bool:
+    """
+    Index a session for session-level RAG search after concept map updates.
+
+    This is called automatically after clustering completes to update the
+    session_summaries collection in ChromaDB with the latest concept map data.
+
+    Returns True if indexing succeeded, False otherwise.
+    """
+    try:
+        from session_serializer import SessionSerializer
+        from rag_service import RAGService
+
+        serializer = SessionSerializer()
+        rag_service = RAGService()
+
+        # Serialize the session data
+        serialized = serializer.serialize_for_embedding(session_device_id)
+
+        if not serialized:
+            logging.warning(f"No data to index for session {session_device_id}")
+            return False
+
+        # Index in the session collection
+        success = rag_service.index_session(session_device_id, serialized)
+
+        if success:
+            logging.info(f"Session {session_device_id} indexed for RAG - "
+                        f"nodes: {serialized['metadata'].get('node_count', 0)}, "
+                        f"transcripts: {serialized['metadata'].get('transcript_count', 0)}")
+
+            # Re-index affected speakers for cross-session search
+            _reindex_affected_speakers(session_device_id)
+        else:
+            logging.error(f"Failed to index session {session_device_id} for RAG")
+
+        return success
+
+    except Exception as e:
+        logging.error(f"Error indexing session {session_device_id} for RAG: {e}", exc_info=True)
+        return False
+
+
+def _reindex_affected_speakers(session_device_id: int):
+    """
+    Re-index all speakers in a session after session data changes.
+
+    Called after session indexing to keep speaker profiles up to date
+    across all their sessions.
+    """
+    try:
+        from tables.speaker import Speaker
+        from speaker_serializer import SpeakerSerializer
+        from rag_service import RAGService
+
+        # Get all unique speaker aliases in this session
+        speakers = Speaker.query.filter_by(session_device_id=session_device_id).all()
+        aliases = set(s.alias for s in speakers if s.alias)
+
+        if not aliases:
+            return
+
+        logging.info(f"Re-indexing {len(aliases)} speakers affected by session {session_device_id}")
+
+        serializer = SpeakerSerializer()
+        rag_service = RAGService()
+
+        for alias in aliases:
+            try:
+                serialized = serializer.serialize_speaker(alias)
+                if serialized:
+                    rag_service.index_speaker(alias, serialized)
+                    logging.debug(f"  Re-indexed speaker: {alias}")
+            except Exception as e:
+                logging.error(f"  Failed to re-index speaker {alias}: {e}")
+
+    except Exception as e:
+        logging.error(f"Error re-indexing speakers for session {session_device_id}: {e}", exc_info=True)
 
 def parse_session_device_id(source):
     """Parse session_device_id from various formats
@@ -230,31 +356,33 @@ def get_concept_graph(session_device_id):
     try:
         # Parse to get the actual session_device_id
         db_session_device_id = parse_session_device_id(session_device_id)
-        
+
         if db_session_device_id is None:
             logging.info(f"No session_device found for {session_device_id}")
             return jsonify({
-                'nodes': [], 
-                'edges': [], 
-                'discourse_type': 'exploratory'
+                'nodes': [],
+                'edges': [],
+                'discourse_type': 'exploratory',
+                'generation_status': 'pending'
             }), 200
-            
+
         # Get the concept session
         concept_session = ConceptSession.query.filter_by(
             session_device_id=db_session_device_id
         ).first()
-        
+
         if not concept_session:
             logging.info(f"No concept session found for session_device_id={db_session_device_id}")
             return jsonify({
-                'nodes': [], 
-                'edges': [], 
-                'discourse_type': 'exploratory'
+                'nodes': [],
+                'edges': [],
+                'discourse_type': 'exploratory',
+                'generation_status': 'pending'
             }), 200
-        
+
         # Use the json() method from your model
         return jsonify(concept_session.json()), 200
-        
+
     except Exception as e:
         logging.error(f"Failed to get concept graph: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -409,12 +537,16 @@ def create_clusters(session_device_id):
             from concept_clustering import create_time_based_clusters
             time_window = data.get('time_window_minutes', 3)
             cluster_ids = create_time_based_clusters(db_session_device_id, time_window)
-        
+
+        # Trigger session-level RAG indexing after clustering completes
+        session_indexed = _index_session_for_rag(db_session_device_id)
+
         return jsonify({
             'status': 'success',
             'method': method,
             'clusters_created': len(cluster_ids),
-            'cluster_ids': cluster_ids
+            'cluster_ids': cluster_ids,
+            'session_indexed': session_indexed  # NEW: indicates if RAG index was updated
         }), 200
         
     except Exception as e:

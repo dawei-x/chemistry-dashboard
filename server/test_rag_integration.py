@@ -1,7 +1,7 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:5002"
+BASE_URL = "http://localhost:5000"
 
 def test_stats():
     """Test that RAG is integrated and working"""

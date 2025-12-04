@@ -71,6 +71,9 @@ def generate_concepts_for_session_device(session_device_id):
         # Get speaker aliases for the response
         speaker_aliases = get_speaker_aliases(transcripts)
 
+        # Create reverse mapping: speaker name/alias → speaker_id (for resolving LLM responses)
+        speaker_name_to_id = {v: k for k, v in speaker_aliases.items()}
+
         # Call LLM to extract concepts (pass line mapping for timestamp resolution)
         concepts_result = extract_concepts_from_full_transcript(transcript_text, line_to_timestamp)
 
@@ -81,7 +84,10 @@ def generate_concepts_for_session_device(session_device_id):
             db.session.commit()
             return None
 
-        # Clear existing nodes and edges (in case of re-generation)
+        # Clear existing clusters, nodes and edges (in case of re-generation)
+        # Must delete clusters first due to foreign key constraints
+        from tables.concept_cluster import ConceptCluster
+        ConceptCluster.query.filter_by(concept_session_id=concept_session.id).delete()
         ConceptNode.query.filter_by(concept_session_id=concept_session.id).delete()
         ConceptEdge.query.filter_by(concept_session_id=concept_session.id).delete()
         db.session.commit()
@@ -94,13 +100,16 @@ def generate_concepts_for_session_device(session_device_id):
             node_id = f"node_{session_device_id}_{i}"
             speaker_id = node_data.get('speaker')
 
-            # Try to get speaker ID if it's a number or alias
+            # Resolve speaker ID from name, number, or alias
             resolved_speaker_id = None
             if speaker_id:
                 if isinstance(speaker_id, int):
                     resolved_speaker_id = speaker_id
                 elif str(speaker_id).isdigit():
                     resolved_speaker_id = int(speaker_id)
+                elif isinstance(speaker_id, str) and speaker_id in speaker_name_to_id:
+                    # LLM returned speaker name (e.g., "Alice") - resolve to database ID
+                    resolved_speaker_id = speaker_name_to_id[speaker_id]
 
             node = ConceptNode(
                 id=node_id,
@@ -152,6 +161,53 @@ def generate_concepts_for_session_device(session_device_id):
                 logging.info(f"Created {len(cluster_ids)} clusters for session_device {session_device_id}")
         except Exception as e:
             logging.error(f"Failed to create clusters: {e}")
+
+        # Auto-index session for RAG after concept generation completes
+        # NOTE: Inline implementation to avoid circular import with concept_routes
+        try:
+            from session_serializer import SessionSerializer
+            from rag_service import RAGService
+
+            serializer = SessionSerializer()
+            rag_service = RAGService()
+
+            # Serialize the session data
+            serialized = serializer.serialize_for_embedding(session_device_id)
+
+            if serialized:
+                # Index in the session collection
+                success = rag_service.index_session(session_device_id, serialized)
+                if success:
+                    logging.info(f"Session {session_device_id} auto-indexed for RAG - "
+                                f"nodes: {serialized['metadata'].get('node_count', 0)}, "
+                                f"transcripts: {serialized['metadata'].get('transcript_count', 0)}")
+
+                    # Re-index affected speakers (inline to avoid circular imports)
+                    try:
+                        from speaker_serializer import SpeakerSerializer
+                        from tables.transcript import Transcript
+
+                        speaker_serializer = SpeakerSerializer()
+                        transcripts = Transcript.query.filter_by(session_device_id=session_device_id).all()
+                        aliases = set(t.speaker.alias for t in transcripts if t.speaker and t.speaker.alias)
+
+                        if aliases:
+                            logging.info(f"Re-indexing {len(aliases)} speakers affected by session {session_device_id}")
+                            for alias in aliases:
+                                try:
+                                    speaker_data = speaker_serializer.serialize_speaker(alias)
+                                    if speaker_data:
+                                        rag_service.index_speaker(alias, speaker_data)
+                                except Exception as e:
+                                    logging.error(f"Failed to re-index speaker {alias}: {e}")
+                    except Exception as e:
+                        logging.warning(f"Speaker re-indexing skipped: {e}")
+                else:
+                    logging.warning(f"Failed to index session {session_device_id} for RAG")
+            else:
+                logging.warning(f"No data to index for session {session_device_id}")
+        except Exception as e:
+            logging.error(f"Failed to auto-index session {session_device_id} for RAG: {e}")
 
         return concept_session
 

@@ -454,6 +454,17 @@ def delete_session(session_id):
         # Get session devices to delete their LLMMetrics
         session_devices = db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).all()
 
+        # Clean up RAG indexes for each session device
+        try:
+            from rag_service import RAGService
+            rag_service = RAGService()
+            for device in session_devices:
+                rag_service.delete_session_index(device.id)
+                logging.info(f"Cleaned up RAG index for session_device {device.id}")
+        except Exception as e:
+            logging.warning(f"Failed to clean up RAG indexes during session deletion: {e}")
+            # Don't fail the deletion if RAG cleanup fails
+
         # Delete related data in correct order to avoid foreign key constraints
         db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id.in_(sub_query)).delete(synchronize_session='fetch')
         db.session.query(Keyword).filter(Keyword.session_id == session_id).delete()

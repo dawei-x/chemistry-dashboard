@@ -1,5 +1,6 @@
 # File for generic helper functions.
-from flask import escape, jsonify
+from flask import jsonify
+from markupsafe import escape
 import re
 import logging
 

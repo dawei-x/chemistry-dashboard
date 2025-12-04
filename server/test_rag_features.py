@@ -1,7 +1,7 @@
 import requests
 import json
 
-BASE_URL = "http://localhost:5002"
+BASE_URL = "http://localhost:5000"
 
 def search_topics():
     """Test different topic searches"""

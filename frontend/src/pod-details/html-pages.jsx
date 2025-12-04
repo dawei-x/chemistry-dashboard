@@ -3,11 +3,18 @@ import { AppSpinner } from "../spinner/spinner-component";
 import { AppSessionToolbar } from "../session-toolbar/session-toolbar-component";
 import { Appheader } from "../header/header-component";
 import style from "./pod.module.css";
-import React from "react";
+import React, { useState } from "react";
 import Select from "react-select";
 import { AppInfographicsComparison } from "../components/infographics-view/infographics-comparison";
+import { DiscussionPulsePanel } from "../components/discussion-pulse";
 
 function PodComponentPages(props) {
+  // Discussion Pulse panel state
+  const [pulseCollapsed, setPulseCollapsed] = useState(false);
+
+  // Check if session is active (not ended)
+  const isSessionActive = props.session && !props.session.end_date;
+
   return (
     <>
       <div className="main-container">
@@ -32,36 +39,48 @@ function PodComponentPages(props) {
             />
           ) : null}
 
-          <div className="center-column-container">
-            {/* Existing infographics sections (timeline, features, etc.) */}
-            <AppInfographicsComparison
-              displayTranscripts={props.displayTranscripts}
-              fromclient={false}
-              onClickedTimeline={props.onClickedTimeline}
-              radarTrigger={props.radarTrigger}
-              session={props.session}
-              sessionDevice={props.sessionDevice}
-              setRange={props.setRange}
-              showBoxes={props.showBoxes}
-              showFeatures={props.showFeatures}
-              startTime={props.startTime}
-              endTime={props.endTime}
-              speakers={props.speakers}
-              selectedSpkrId1={props.selectedSpkrId1}
-              setSelectedSpkrId1={props.setSelectedSpkrId1}
-              selectedSpkrId2={props.selectedSpkrId2}
-              setSelectedSpkrId2={props.setSelectedSpkrId2}
-              spkr1Transcripts={props.spkr1Transcripts}
-              spkr2Transcripts={props.spkr2Transcripts}
-              details={props.details}
+          <div style={{ display: 'flex', width: '100%', gap: '16px' }}>
+            <div className="center-column-container" style={{ flex: 1 }}>
+              {/* Existing infographics sections (timeline, features, etc.) */}
+              <AppInfographicsComparison
+                displayTranscripts={props.displayTranscripts}
+                fromclient={false}
+                onClickedTimeline={props.onClickedTimeline}
+                radarTrigger={props.radarTrigger}
+                session={props.session}
+                sessionDevice={props.sessionDevice}
+                setRange={props.setRange}
+                showBoxes={props.showBoxes}
+                showFeatures={props.showFeatures}
+                startTime={props.startTime}
+                endTime={props.endTime}
+                speakers={props.speakers}
+                selectedSpkrId1={props.selectedSpkrId1}
+                setSelectedSpkrId1={props.setSelectedSpkrId1}
+                selectedSpkrId2={props.selectedSpkrId2}
+                setSelectedSpkrId2={props.setSelectedSpkrId2}
+                spkr1Transcripts={props.spkr1Transcripts}
+                spkr2Transcripts={props.spkr2Transcripts}
+                details={props.details}
 
-              // MULTI-DEVICE overlay into Features table
-              multiSeries={props.multiSeries}
-              deviceOptions={props.deviceOptions}
-              selectedDeviceIds={props.selectedDeviceIds}
-              onDeviceSelectionChange={props.onDeviceSelectionChange}
-              currentSessionDeviceId={props.currentSessionDeviceId}
-            />
+                // MULTI-DEVICE overlay into Features table
+                multiSeries={props.multiSeries}
+                deviceOptions={props.deviceOptions}
+                selectedDeviceIds={props.selectedDeviceIds}
+                onDeviceSelectionChange={props.onDeviceSelectionChange}
+                currentSessionDeviceId={props.currentSessionDeviceId}
+              />
+            </div>
+
+            {/* Discussion Pulse Panel - Collapsible sidebar */}
+            {props.sessionDevice?.id && (
+              <DiscussionPulsePanel
+                sessionDeviceId={props.sessionDevice.id}
+                isSessionActive={isSessionActive}
+                isCollapsed={pulseCollapsed}
+                onToggleCollapse={() => setPulseCollapsed(!pulseCollapsed)}
+              />
+            )}
           </div>
         </div>
 
