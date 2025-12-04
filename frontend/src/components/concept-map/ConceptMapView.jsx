@@ -64,6 +64,9 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
   const positionCacheRef = useRef(new Map());  // Cache pre-computed node positions
   const pendingZoomRef = useRef(null);  // requestAnimationFrame debouncing
 
+  // Regeneration state
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
   // Node colors configuration - Modern Tailwind-inspired palette
   const nodeColors = useMemo(() => ({
     question: '#EF4444',    // Red-500
@@ -124,7 +127,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
                 (ZOOM_THRESHOLDS.CLUSTERS_EXPANDED - ZOOM_THRESHOLDS.CLUSTERS_ONLY);
       clusterBgOpacity = 0.7 - (0.4 * t);  // 0.7 -> 0.3
       clusterBorderOpacity = 0.8;
-      clusterTextOpacity = 1;
+      clusterTextOpacity = 1 - (0.1 * t);  // Start slight fade: 1 -> 0.9
       nodeOpacity = t * 0.6;  // 0 -> 0.6
       intraEdgeOpacity = t * 0.4;
       interEdgeOpacity = 0.8 - (0.3 * t);
@@ -134,7 +137,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
                 (ZOOM_THRESHOLDS.FULL_DETAIL - ZOOM_THRESHOLDS.CLUSTERS_EXPANDED);
       clusterBgOpacity = 0.3 - (0.15 * t);  // 0.3 -> 0.15
       clusterBorderOpacity = 0.8 - (0.4 * t);
-      clusterTextOpacity = 1 - (0.4 * t);
+      clusterTextOpacity = 0.9 - (0.55 * t);  // Fade more: 0.9 -> 0.35
       nodeOpacity = 0.6 + (0.4 * t);  // 0.6 -> 1.0
       intraEdgeOpacity = 0.4 + (0.6 * t);  // 0.4 -> 1.0
       interEdgeOpacity = 0.5 - (0.3 * t);
@@ -142,7 +145,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       // Full detail - nodes prominent, clusters faded
       clusterBgOpacity = 0.1;
       clusterBorderOpacity = 0.3;
-      clusterTextOpacity = 0.5;
+      clusterTextOpacity = 0.35;  // A bit more faded
       nodeOpacity = 1;
       intraEdgeOpacity = 1;
       interEdgeOpacity = 0.2;
@@ -177,14 +180,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       const shouldHideNodes = zoom < ZOOM_THRESHOLDS.CLUSTERS_ONLY;
 
       // Use batch for performance - all updates in single redraw
-      // CSS transitions handle the smooth animation
       cy.batch(() => {
-        // Update cluster nodes - just opacity, no size manipulation
+        // Update cluster nodes - opacity only (size is calculated dynamically)
         cy.nodes('[isCluster]').forEach(node => {
           node.data('bgOpacity', opacities.cluster.bgOpacity);
           node.data('borderOpacity', opacities.cluster.borderOpacity);
           node.data('textOpacity', opacities.cluster.textOpacity);
-          // Let clusters size naturally based on content - no forced sizing
+          // Size is handled by updateAllClusterBounds below
         });
 
         // Update concept nodes - control visibility based on zoom
@@ -205,6 +207,12 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
         });
       });
 
+      // Update cluster bounds based on concept visibility
+      const updateAllClusterBounds = cy.scratch('updateAllClusterBounds');
+      if (updateAllClusterBounds) {
+        updateAllClusterBounds();
+      }
+
       // Update state for UI indicator
       setCurrentZoomLevel(getZoomLevel(zoom));
     });
@@ -217,28 +225,28 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     const cy = Cytoscape({
       container: container,
       style: [
-        // Cluster (parent) node styles - organic ellipse shape, auto-sizing
+        // Cluster node styles - ellipse shape with explicit dimensions
         {
           selector: 'node[isCluster]',
           style: {
-            'shape': 'ellipse',  // Organic, casual shape for clusters
+            'shape': 'ellipse',  // Now works - no compound node relationship
+            'width': 'data(width)',    // Explicit size from data
+            'height': 'data(height)',  // Explicit size from data
             'background-color': 'data(color)',
             'background-opacity': 'data(bgOpacity)',  // Dynamic opacity
             'border-width': 2,
             'border-color': 'data(borderColor)',
             'border-opacity': 'data(borderOpacity)',  // Dynamic opacity
             'label': 'data(label)',
-            'text-valign': 'top',
+            'text-valign': 'center',
             'text-halign': 'center',
-            'font-size': '14px',
+            'font-size': '22px',
             'font-weight': 'bold',
             'text-opacity': 'data(textOpacity)',  // Dynamic opacity
             'text-wrap': 'wrap',  // Allow multi-line cluster labels
-            'text-max-width': '200px',
-            'padding': '30px',
-            'text-margin-y': -5,  // Position label inside the ellipse
+            'text-max-width': '250px',
             'z-index': 1,
-            // CSS transitions for smooth opacity changes
+            // CSS transitions for opacity only - size changes are instant for natural feel
             'transition-property': 'background-opacity, border-opacity, text-opacity',
             'transition-duration': `${ANIMATION.OPACITY_TRANSITION}ms`
           }
@@ -258,7 +266,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
             'background-opacity': 'data(nodeOpacity)',  // Dynamic opacity
             'border-width': 2,
             'border-color': 'data(borderColor)',
-            'border-opacity': 0.6,
+            'border-opacity': 'data(nodeOpacity)',  // Dynamic - fixes empty frame bug
             'font-size': '12px',
             'font-weight': 500,
             'color': '#ffffff',
@@ -385,21 +393,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           if (!clusterData) return;
 
           console.log('Clusters loaded:', clusterData);
-          if (clusterData.clusters && clusterData.clusters.length > 0) {
-            setClusters(clusterData.clusters);
-          } else if (conceptData.nodes.length > 0) {
-            // Trigger clustering if we have nodes but no clusters
-            return fetch(`/api/v1/concepts/${sessionDeviceId}/cluster`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ method: 'semantic' })
-            })
-            .then(() => fetch(`/api/v1/concepts/${sessionDeviceId}/clusters`))
-            .then(res => res.json())
-            .then(newClusterData => {
-              setClusters(newClusterData.clusters || []);
-            });
-          }
+          // Set clusters if available - clustering is now handled by backend during concept generation
+          setClusters(clusterData.clusters || []);
         })
         .catch(err => {
           console.error('Failed to load data:', err);
@@ -456,7 +451,13 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     clusters.forEach((cluster, index) => {
       const clusterColor = getClusterColor(index);
 
-      // Add cluster parent node - let it size naturally based on content
+      // Add cluster node - ellipse shape, size calculated dynamically
+      const nodeCount = cluster.node_count || cluster.nodes?.length || 0;
+
+      // Collapsed size (compact ellipse for zoomed-out view)
+      const collapsedWidth = Math.max(120, 100 + nodeCount * 15);
+      const collapsedHeight = collapsedWidth * 0.75;
+
       elements.push({
         data: {
           id: `cluster_${cluster.id}`,
@@ -464,15 +465,18 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           isCluster: true,
           color: clusterColor,
           borderColor: darkenColor(clusterColor, 0.3),
-          nodeCount: cluster.node_count || cluster.nodes?.length || 0,
+          nodeCount: nodeCount,
           summary: cluster.summary,
+          // Collapsed dimensions (expanded calculated dynamically from concept bounds)
+          collapsedWidth, collapsedHeight,
+          width: collapsedWidth,   // Start collapsed
+          height: collapsedHeight,
           // Dynamic opacity values for semantic zoom
           bgOpacity: initialOpacities.cluster.bgOpacity,
           borderOpacity: initialOpacities.cluster.borderOpacity,
           textOpacity: initialOpacities.cluster.textOpacity
         },
         position: clusterPositions[index]
-        // No forced styling - cose-bilkent will handle sizing
       });
 
       // ALWAYS add individual nodes (visibility controlled by opacity)
@@ -495,7 +499,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
           elements.push({
             data: {
               id: node.id,
-              parent: `cluster_${cluster.id}`,
+              // No parent - allows clusters to be ellipses (compound nodes force rectangles)
               label: node.text,
               type: node.type,
               color: nodeColor,
@@ -596,10 +600,8 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       setTranscriptsError(null);
 
       // Use sessionDeviceId prop instead of parsing from node ID
-      // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
-      // Use max(0, timestamp - 15) to avoid negative timestamps
-      const adjustedTimestamp = Math.max(0, Math.floor(timestamp) - 15);
-      const url = `/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`;
+      // Post-discussion mode: concept timestamps are derived directly from transcript start_time
+      const url = `/api/v1/concepts/${sessionDeviceId}/transcripts/${Math.floor(timestamp)}`;
       fetch(url)
         .then(res => {
           if (!res.ok) {
@@ -650,31 +652,109 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
       setTooltip(prev => ({ ...prev, visible: false }));
     });
 
-    // Use cose-bilkent layout - designed for compound node graphs
-    // It handles cluster sizing and node positioning automatically
+    // Helper: Update cluster ellipse to encompass all its concepts
+    const updateClusterBounds = (clusterId) => {
+      const clusterNode = cy.getElementById(`cluster_${clusterId}`);
+      if (!clusterNode || clusterNode.length === 0) return;
+
+      // Find all concepts belonging to this cluster (use filter for type-safe comparison)
+      const concepts = cy.nodes('[!isCluster]').filter(node => node.data('clusterId') == clusterId);
+      if (concepts.length === 0) {
+        // No concepts - use collapsed size
+        clusterNode.data('width', clusterNode.data('collapsedWidth'));
+        clusterNode.data('height', clusterNode.data('collapsedHeight'));
+        return;
+      }
+
+      // Always calculate bounding box from concept POSITIONS (not visibility)
+      // Cluster should encompass concepts whether they're visible or hidden
+      const clusterPos = clusterNode.position();
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+
+      concepts.forEach(concept => {
+        const pos = concept.position();
+        const w = concept.outerWidth() || 100;
+        const h = concept.outerHeight() || 40;
+        minX = Math.min(minX, pos.x - w / 2);
+        maxX = Math.max(maxX, pos.x + w / 2);
+        minY = Math.min(minY, pos.y - h / 2);
+        maxY = Math.max(maxY, pos.y + h / 2);
+      });
+
+      // Add padding around concepts
+      const padding = 50;
+      const width = (maxX - minX) + padding * 2;
+      const height = (maxY - minY) + padding * 2;
+
+      // Update cluster size
+      clusterNode.data('width', Math.max(width, 120));
+      clusterNode.data('height', Math.max(height, 90));
+
+      // Center cluster on the concept bounding box
+      const centerX = (minX + maxX) / 2;
+      const centerY = (minY + maxY) / 2;
+      clusterNode.position({ x: centerX, y: centerY });
+    };
+
+    // Update all cluster bounds
+    const updateAllClusterBounds = () => {
+      const clusterIds = new Set();
+      cy.nodes('[clusterId]').forEach(node => {
+        clusterIds.add(node.data('clusterId'));
+      });
+      clusterIds.forEach(clusterId => updateClusterBounds(clusterId));
+    };
+
+    // Drag handler - update cluster bounds when concept is dragged
+    cy.on('drag', 'node[!isCluster]', function(evt) {
+      const node = evt.target;
+      const clusterId = node.data('clusterId');
+      if (clusterId) {
+        updateClusterBounds(clusterId);
+      }
+    });
+
+    // Store updateAllClusterBounds on cy for access from handleSemanticZoom
+    cy.scratch('updateAllClusterBounds', updateAllClusterBounds);
+
+    // Cluster drag handler - move all concepts with the cluster
+    cy.on('dragstart', 'node[isCluster]', function(evt) {
+      evt.target.scratch('prevPos', evt.target.position());
+    });
+
+    cy.on('drag', 'node[isCluster]', function(evt) {
+      const cluster = evt.target;
+      const clusterId = cluster.id().replace('cluster_', '');
+      const currentPos = cluster.position();
+      const prevPos = cluster.scratch('prevPos') || currentPos;
+
+      // Calculate movement delta
+      const dx = currentPos.x - prevPos.x;
+      const dy = currentPos.y - prevPos.y;
+
+      // Move all concepts in this cluster
+      cy.nodes('[!isCluster]').filter(n => n.data('clusterId') == clusterId).forEach(concept => {
+        const pos = concept.position();
+        concept.position({ x: pos.x + dx, y: pos.y + dy });
+      });
+
+      // Store current position for next delta calculation
+      cluster.scratch('prevPos', { x: currentPos.x, y: currentPos.y });
+    });
+
+    // Use preset layout - positions are already calculated manually
+    // No compound nodes, so no need for complex layout algorithms
     cy.layout({
-      name: 'cose-bilkent',
-      quality: 'default',
-      nodeDimensionsIncludeLabels: true,
+      name: 'preset',
       fit: true,
-      padding: 60,
-      randomize: false,
-      nodeRepulsion: 8000,      // Higher repulsion for variable-sized nodes
-      idealEdgeLength: 150,     // More space between connected nodes
-      edgeElasticity: 0.45,
-      nestingFactor: 0.1,
-      gravity: 0.15,            // Lower gravity for more spread
-      numIter: 2500,
-      tile: true,
-      tilingPaddingVertical: 30,
-      tilingPaddingHorizontal: 30,
-      animate: 'end',
-      animationDuration: 500
+      padding: 60
     }).run();
 
-    // Apply initial opacity based on zoom level after layout
+    // Apply initial opacity and cluster bounds after layout
     setTimeout(() => {
       handleSemanticZoom(cy);
+      updateAllClusterBounds();
     }, 100);
   }, [clusters, nodeColors, darkenColor, formatEdgeLabel, calculateOpacities, handleSemanticZoom, setTranscriptPanel, setPanelTranscripts, sessionDeviceId]);
 
@@ -905,38 +985,25 @@ useEffect(() => {
       return [{ x: center.x, y: center.y }];
     }
 
-    // Calculate the maximum expanded cluster size
-    // Nodes are variable-sized now, estimate based on max text width
+    // Use COLLAPSED ellipse size for spacing - looks better when zoomed out
+    // When expanded, clusters can overlap slightly (they're mostly transparent)
     const maxNodes = clusterSizes.length > 0 ? Math.max(...clusterSizes, 1) : 5;
-    const cols = Math.ceil(Math.sqrt(maxNodes));
-    const rows = Math.ceil(maxNodes / cols);
-    const estimatedNodeWidth = 200;  // Estimated for wrapped text
-    const estimatedNodeHeight = 60;  // Estimated for 2-3 lines
-    const nodeSpacingX = 250;
-    const nodeSpacingY = 120;
+    const collapsedSize = Math.max(120, 100 + maxNodes * 15);  // Match collapsed size calculation
 
-    // Estimated expanded cluster dimensions
-    const expandedWidth = cols * estimatedNodeWidth + (cols - 1) * nodeSpacingX + 100;
-    const expandedHeight = rows * estimatedNodeHeight + (rows - 1) * nodeSpacingY + 100;
-    const maxDimension = Math.max(expandedWidth, expandedHeight);
+    // Minimum spacing between cluster centers - use expanded size for proper spacing
+    const minClusterSpacing = collapsedSize + 300;  // More space for expanded clusters
 
-    // Minimum spacing between cluster centers = max expanded dimension + buffer
-    const minClusterSpacing = maxDimension + 100;
-
-    // Calculate radius to ensure clusters don't overlap when expanded
-    // For N clusters in a circle: spacing = 2 * radius * sin(π/N)
-    // So: radius = spacing / (2 * sin(π/N))
+    // Calculate radius for circular arrangement
     let radius;
     if (count === 2) {
-      // Two clusters: place them side by side
-      radius = minClusterSpacing / 2;
+      radius = minClusterSpacing;  // Side by side
     } else {
-      // For 3+ clusters in a circle
+      // For 3+ clusters: spacing = 2 * radius * sin(π/N)
       radius = minClusterSpacing / (2 * Math.sin(Math.PI / count));
     }
 
-    // Ensure minimum radius
-    radius = Math.max(radius, 250);
+    // Ensure minimum radius for visual balance
+    radius = Math.max(radius, 180);
 
     for (let i = 0; i < count; i++) {
       const angle = (2 * Math.PI * i) / count - Math.PI / 2;
@@ -1050,6 +1117,51 @@ useEffect(() => {
     }
   }, [sessionDeviceId]);
 
+  // Regenerate concepts from the full transcript
+  const regenerateConcepts = useCallback(async () => {
+    if (!sessionDeviceId || isRegenerating) return;
+
+    setIsRegenerating(true);
+    setGenerationStatus('processing');
+
+    try {
+      const response = await fetch(`/api/v1/concepts/regenerate/${sessionDeviceId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Refresh the concept data
+        setGenerationStatus('completed');
+        // Re-fetch concept data
+        const conceptsResponse = await fetch(`/api/v1/concepts/${sessionDeviceId}`);
+        if (conceptsResponse.ok) {
+          const conceptsData = await conceptsResponse.json();
+          setConceptData({
+            nodes: conceptsData.nodes || [],
+            edges: conceptsData.edges || []
+          });
+          setClusters(conceptsData.clusters || []);
+          setDisplayData({
+            nodeCount: conceptsData.nodes?.length || 0,
+            edgeCount: conceptsData.edges?.length || 0,
+            discourseType: conceptsData.discourse_type || 'exploratory'
+          });
+        }
+      } else {
+        console.error('Regeneration failed:', data.error);
+        setGenerationStatus('failed');
+      }
+    } catch (err) {
+      console.error('Error regenerating concepts:', err);
+      setGenerationStatus('failed');
+    } finally {
+      setIsRegenerating(false);
+    }
+  }, [sessionDeviceId, isRegenerating]);
+
   if (!sessionDeviceId) {
     return (
       <div className={style.conceptMapContainer}>
@@ -1111,6 +1223,14 @@ useEffect(() => {
             </button>
             <button className={style.actionButton} onClick={exportGraph}>
               Export
+            </button>
+            <button
+              className={style.actionButton}
+              onClick={regenerateConcepts}
+              disabled={isRegenerating || generationStatus === 'processing'}
+              title="Regenerate concept map from full transcript"
+            >
+              {isRegenerating ? 'Regenerating...' : 'Regenerate'}
             </button>
             <button
               className={style.actionButtonPrimary}

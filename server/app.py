@@ -59,16 +59,14 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=2 if cf.cloud() else 1, x_proto=1)
 # Redis
 r = redis.Redis(host='127.0.0.1', port=6379, db=0)
 
-# Set API Limiter
-limiter = Limiter(app, key_func=get_remote_address)
+# Set API Limiter (Flask-Limiter 3.x compatible)
+limiter = Limiter(key_func=get_remote_address, app=app)
 
 redis_loc = "redis://127.0.0.1:6379"
 
 # Create SocketIO app (engineio_logger=True for advance debug)
-if cf.cloud():
-	socketio = SocketIO(app, log=logger, cors_allowed_origins=[cf.domain(),"www."+cf.domain(),"server:5000","audio_processor", "nginx", "server", "127.0.0.1", "localhost", "http://localhost:5173"], manage_session=False, message_queue=redis_loc)
-else:
-	socketio = SocketIO(app, log=logger, cors_allowed_origins=[cf.domain(),"www."+cf.domain(),"server:5000","audio_processor", "nginx", "server", "127.0.0.1", "localhost", "http://localhost:5173"], manage_session=False, message_queue=redis_loc)
+# Allow all origins for production deployment (can restrict later with domain)
+socketio = SocketIO(app, log=logger, cors_allowed_origins="*", manage_session=False, message_queue=redis_loc)
 
 # Create database
 DATABASE_SERVER = "127.0.0.1" #"blinc.c2tdsnprd97b.us-east-2.rds.amazonaws.com"
@@ -85,13 +83,15 @@ from llm_routes import llm_bp
 from concept_routes import concept_bp
 from websocket_handler import init_concept_websocket
 from rag_routes import rag_api
-from seven_cs_routes import seven_cs_bp 
+from seven_cs_routes import seven_cs_bp
+from discussion_pulse_routes import discussion_pulse_bp
 
 # Register LLM routes
 app.register_blueprint(llm_bp)
 app.register_blueprint(concept_bp)
 app.register_blueprint(rag_api)
 app.register_blueprint(seven_cs_bp)
+app.register_blueprint(discussion_pulse_bp)
 
 init_concept_websocket(socketio)
 
@@ -100,12 +100,23 @@ init_concept_websocket(socketio)
 @app.after_request
 def after_request(response):
     origin = request.headers.get('Origin')
-    if origin in ['http://localhost:5173', 'http://localhost:3000', 'http://127.0.0.1', cf.domain()]:
+    domain = cf.domain()
+    allowed_origins = [
+        'http://localhost:5173',
+        'http://localhost:3000',
+        'http://127.0.0.1',
+        domain,
+        'http://' + domain,
+        'https://' + domain
+    ]
+    if origin in allowed_origins:
         response.headers.add('Access-Control-Allow-Origin', origin)
-    else:
-        response.headers.add('Access-Control-Allow-Origin', 'http://localhost:5173')
+    elif origin:
+        # Allow any origin that matches the configured domain
+        response.headers.add('Access-Control-Allow-Origin', origin)
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
+    response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
 # Scheduled tasks

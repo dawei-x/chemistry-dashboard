@@ -52,5 +52,13 @@ class RAGAutoIndexer:
             if self.pending_transcripts[session_device_id]:
                 self.index_pending(session_device_id)
 
-# Global instance
-auto_indexer = RAGAutoIndexer()
+
+# Lazy singleton pattern - avoids creating RAGService at import time
+_auto_indexer_instance = None
+
+def get_auto_indexer():
+    """Lazy singleton - only creates RAGAutoIndexer when first needed"""
+    global _auto_indexer_instance
+    if _auto_indexer_instance is None:
+        _auto_indexer_instance = RAGAutoIndexer()
+    return _auto_indexer_instance

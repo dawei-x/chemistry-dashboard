@@ -263,29 +263,33 @@ class AudioProcessor:
 
                     np.save(self.embeddings_file, np.array(self.embeddings))
                 
-            # Concept extraction
-            if self.concept_extractor and transcript_text and hasattr(self.config, 'concept_mapping') and self.config.concept_mapping:
-                try:
-                    concept_update = self.concept_extractor.add_transcript(
-                        transcript_text,
-                        speaker_id,
-                        start_time,
-                        end_time
-                    )
-                    if concept_update:
-                        session_device_id = int(self.config.auth_key.split('-')[0])
-                        
-                        success = callbacks.post_concept_update(
-                            session_device_id,
-                            concept_update,
-                            end_time
-                        )
-                        if success:
-                            logging.info(f"Posted concept update for session_device {session_device_id}")
-                        else:
-                            logging.error(f"Failed to post concept update for session_device {session_device_id}")
-                except Exception as e:
-                    logging.error(f"Concept extraction failed: {e}", exc_info=True)
+            # Real-time concept extraction DISABLED
+            # Concept maps are now generated post-discussion for better quality
+            # (LLM has access to full transcript context instead of 8-second windows)
+            # See: server/concept_generation_service.py for post-discussion generation
+            #
+            # if self.concept_extractor and transcript_text and hasattr(self.config, 'concept_mapping') and self.config.concept_mapping:
+            #     try:
+            #         concept_update = self.concept_extractor.add_transcript(
+            #             transcript_text,
+            #             speaker_id,
+            #             start_time,
+            #             end_time
+            #         )
+            #         if concept_update:
+            #             session_device_id = int(self.config.auth_key.split('-')[0])
+            #
+            #             success = callbacks.post_concept_update(
+            #                 session_device_id,
+            #                 concept_update,
+            #                 end_time
+            #             )
+            #             if success:
+            #                 logging.info(f"Posted concept update for session_device {session_device_id}")
+            #             else:
+            #                 logging.error(f"Failed to post concept update for session_device {session_device_id}")
+            #     except Exception as e:
+            #         logging.error(f"Concept extraction failed: {e}", exc_info=True)
                 
             # Only post transcript if speaker_metrics didn't already handle it
             if not speaker_metrics_handled:

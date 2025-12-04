@@ -9,7 +9,7 @@ import database
 import json
 import wrappers
 from handlers import callback_handlers
-from rag_auto_indexer import auto_indexer
+from rag_auto_indexer import get_auto_indexer
 
 api_routes = Blueprint('callback', __name__)
 
@@ -107,9 +107,9 @@ def add_transcript(**kwargs):
     for keyword in keywords:
       added_keywords.append(database.add_keyword_usage(transcript.id, keyword['word'], keyword['keyword'], keyword['similarity']))
     if transcript:
-    # Add to RAG auto-indexer
+    # Add to RAG auto-indexer (lazy init on first use)
       try:
-          auto_indexer.add_transcript(transcript.session_device_id, transcript)
+          get_auto_indexer().add_transcript(transcript.session_device_id, transcript)
       except Exception as e:
           logging.warning(f"RAG auto-index failed: {e}")
     # Emit data on sockets.

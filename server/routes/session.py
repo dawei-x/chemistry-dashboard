@@ -380,7 +380,7 @@ def read_image(filepath):
 
 
 
-@api_routes.route('/api/v1/concepts/<int:device_id>/transcripts/<float:timestamp>', methods=['GET'])
+@api_routes.route('/api/v1/concepts/<int:device_id>/transcripts/<int:timestamp>', methods=['GET'])
 def get_transcripts_for_concept(device_id, timestamp):
     """Get transcripts around a specific timestamp for concept viewing"""
     try:

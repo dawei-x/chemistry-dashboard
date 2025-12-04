@@ -4,7 +4,7 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from app import db
 from tables.seven_cs_analysis import SevenCsAnalysis
 from tables.seven_cs_coded_segment import SevenCsCodedSegment
@@ -12,6 +12,85 @@ from tables.speaker import Speaker
 import database as db_helper
 
 load_dotenv()
+
+
+def _reindex_session_for_rag(session_device_id: int) -> bool:
+    """
+    Re-index a session for RAG search after 7C analysis completes.
+
+    This updates the session_summaries collection in ChromaDB to include
+    the latest 7C analysis data (scores, evidence, explanations).
+
+    Returns True if indexing succeeded, False otherwise.
+    """
+    try:
+        from session_serializer import SessionSerializer
+        from rag_service import RAGService
+
+        serializer = SessionSerializer()
+        rag_service = RAGService()
+
+        # Serialize the session data (now includes 7C data)
+        serialized = serializer.serialize_for_embedding(session_device_id)
+
+        if not serialized:
+            logging.warning(f"No data to index for session {session_device_id} after 7C analysis")
+            return False
+
+        # Re-index in the session collection
+        success = rag_service.index_session(session_device_id, serialized)
+
+        if success:
+            logging.info(f"Session {session_device_id} re-indexed for RAG with 7C data - "
+                        f"communication: {serialized['metadata'].get('communication_score', 0)}, "
+                        f"constructive: {serialized['metadata'].get('constructive_score', 0)}")
+
+            # Re-index affected speakers for cross-session search
+            _reindex_affected_speakers(session_device_id)
+        else:
+            logging.error(f"Failed to re-index session {session_device_id} for RAG after 7C analysis")
+
+        return success
+
+    except Exception as e:
+        logging.error(f"Error re-indexing session {session_device_id} for RAG: {e}", exc_info=True)
+        return False
+
+
+def _reindex_affected_speakers(session_device_id: int):
+    """
+    Re-index all speakers in a session after session data changes.
+
+    Called after session indexing to keep speaker profiles up to date
+    across all their sessions.
+    """
+    try:
+        from speaker_serializer import SpeakerSerializer
+        from rag_service import RAGService
+
+        # Get all unique speaker aliases in this session
+        speakers = Speaker.query.filter_by(session_device_id=session_device_id).all()
+        aliases = set(s.alias for s in speakers if s.alias)
+
+        if not aliases:
+            return
+
+        logging.info(f"Re-indexing {len(aliases)} speakers affected by session {session_device_id}")
+
+        serializer = SpeakerSerializer()
+        rag_service = RAGService()
+
+        for alias in aliases:
+            try:
+                serialized = serializer.serialize_speaker(alias)
+                if serialized:
+                    rag_service.index_speaker(alias, serialized)
+                    logging.debug(f"  Re-indexed speaker: {alias}")
+            except Exception as e:
+                logging.error(f"  Failed to re-index speaker {alias}: {e}")
+
+    except Exception as e:
+        logging.error(f"Error re-indexing speakers for session {session_device_id}: {e}", exc_info=True)
 
 # Initialize OpenAI client
 api_key = os.getenv("OPENAI_API_KEY")
@@ -112,6 +191,10 @@ def analyze_session_seven_cs(session_device_id):
         db.session.commit()
 
         logging.info(f"Successfully completed 7C analysis for session_device {session_device_id}")
+
+        # Trigger RAG re-indexing to include 7C data in session embeddings
+        _reindex_session_for_rag(session_device_id)
+
         return analysis
 
     except Exception as e:
@@ -764,8 +847,16 @@ def update_seven_cs_analysis(session_device_id):
     ).order_by(SevenCsAnalysis.created_at.desc()).first()
 
     if existing and existing.analysis_status == 'processing':
-        logging.info(f"Analysis already in progress for session_device {session_device_id}")
-        return existing
+        # Check if analysis is stuck (processing for more than 5 minutes)
+        time_since_update = datetime.utcnow() - existing.updated_at
+        if time_since_update < timedelta(minutes=5):
+            logging.info(f"Analysis already in progress for session_device {session_device_id}")
+            return existing
+        else:
+            # Analysis is stuck - mark as failed and allow re-run
+            logging.warning(f"Analysis stuck in processing for {time_since_update}, marking as failed")
+            existing.analysis_status = 'failed'
+            db.session.commit()
 
     # Run new analysis
     return analyze_session_seven_cs(session_device_id)

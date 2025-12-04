@@ -57,7 +57,7 @@ def create_semantic_clusters(session_device_id):
         
         # Call the new clustering endpoint
         response = requests.post(
-            'http://localhost:5002/api/v1/llm/create_clusters',
+            'http://localhost:5000/api/v1/llm/create_clusters',
             json={
                 'nodes': nodes_data,
                 'edges': edges_data

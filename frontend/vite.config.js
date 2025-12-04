@@ -9,9 +9,9 @@ export default defineConfig(() => {
         plugins: [react(), eslint(), tailwindcss()],
         server: {
             proxy: {
-                '/api': 'http://localhost:5002',
+                '/api': 'http://localhost:5000',
                 '/socket.io': {
-                    target: 'http://localhost:5002',
+                    target: 'http://localhost:5000',
                     ws: true,
                 },
                 '/audio_socket': {
