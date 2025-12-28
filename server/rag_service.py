@@ -82,11 +82,39 @@ class RAGService:
             metadata={"description": "Cross-session speaker profiles indexed by alias"}
         )
 
+        # ============================================================
+        # GRAPH-ENHANCED RAG COLLECTIONS (NEW - for agentic workflows)
+        # ============================================================
+
+        # Semantic transcript chunks - topic-based instead of fixed 30-sec windows
+        self.semantic_chunks_collection = self.client.get_or_create_collection(
+            name="semantic_chunks",
+            embedding_function=self.embedding_function,
+            metadata={"description": "Semantic topic-based transcript chunks"}
+        )
+
+        # Individual concept nodes - fine-grained concept search
+        self.concept_nodes_collection = self.client.get_or_create_collection(
+            name="concept_nodes",
+            embedding_function=self.embedding_function,
+            metadata={"description": "Individual concept node embeddings"}
+        )
+
+        # Concept clusters (themes) - high-level thematic search
+        self.concept_clusters_collection = self.client.get_or_create_collection(
+            name="concept_clusters",
+            embedding_function=self.embedding_function,
+            metadata={"description": "Concept cluster (theme) embeddings"}
+        )
+
         logger.info(f"RAG Service initialized - chunks: {self.collection.count()}, "
                    f"transcripts: {self.transcript_collection.count()}, "
                    f"concepts: {self.concept_collection.count()}, "
                    f"7c: {self.seven_c_collection.count()}, "
-                   f"speakers: {self.speaker_collection.count()}")
+                   f"speakers: {self.speaker_collection.count()}, "
+                   f"semantic_chunks: {self.semantic_chunks_collection.count()}, "
+                   f"concept_nodes: {self.concept_nodes_collection.count()}, "
+                   f"concept_clusters: {self.concept_clusters_collection.count()}")
     
     def chunk_transcripts(self, transcripts: List, window_seconds: int = 30) -> List[Dict]:
         """
@@ -990,8 +1018,19 @@ When providing insights:
             where = {"$and": where_clauses}
 
         try:
+            # Validate query is not empty - prevents OpenAI API 400 errors
+            if not query or not str(query).strip():
+                logger.warning(f"Empty query passed to {collection_name} search")
+                return {
+                    "results": [],
+                    "total_results": 0,
+                    "collection": collection_name,
+                    "query": query,
+                    "error": "Empty query"
+                }
+
             results = collection.query(
-                query_texts=[query],
+                query_texts=[str(query).strip()],
                 n_results=n_results,
                 where=where
             )

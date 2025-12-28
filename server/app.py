@@ -85,6 +85,9 @@ from websocket_handler import init_concept_websocket
 from rag_routes import rag_api
 from seven_cs_routes import seven_cs_bp
 from discussion_pulse_routes import discussion_pulse_bp
+from agent_routes import agent_bp
+from agent_v2.routes import agent_v2_bp
+from agent_v3.routes import agent_v3_bp
 
 # Register LLM routes
 app.register_blueprint(llm_bp)
@@ -92,6 +95,9 @@ app.register_blueprint(concept_bp)
 app.register_blueprint(rag_api)
 app.register_blueprint(seven_cs_bp)
 app.register_blueprint(discussion_pulse_bp)
+app.register_blueprint(agent_bp)
+app.register_blueprint(agent_v2_bp)  # LangGraph agent v2
+app.register_blueprint(agent_v3_bp)  # Ultra Agent v3 - intelligent reasoning
 
 init_concept_websocket(socketio)
 

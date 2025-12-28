@@ -54,6 +54,7 @@ function HomeScreen(props) {
       <img alt="speaker" className="flex w-36.5 h-36.5 mt-13 mb-12.5" src={speaker} />
       <Menus menuIcon={recordicon} menuName="Discussions" route={navigate} path='/sessions' />
       <Menus menuIcon={ragicon} menuName="RAG Discovery" route={navigate} path='/discover' />
+      <Menus menuIcon={question} menuName="Agent Chat" route={navigate} path='/chat' />
       <Menus menuIcon={wordlist} menuName="Keyword" route={navigate} path='/keyword-lists' />
       <Menus menuIcon={pod} menuName="Pods" route={navigate} path='/pods' />
       <Menus menuIcon={trending} menuName="Topic Modeling" route={navigate} path='/topic-models' />

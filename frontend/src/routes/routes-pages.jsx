@@ -20,6 +20,7 @@ import {PodsComponent} from '../pods/pods-component';
 import {ProtectedRoute} from './protected-route';
 import {SessionFeedbackForm} from "../feedback-form/session-feedback-form";
 import {RagSearchComponent} from '../rag-search/RagSearchComponent';
+import { AgentChatPanel } from '../components/agent-chat';
 
 function PageRouter() {
     
@@ -52,6 +53,7 @@ function PageRouter() {
                 <Route path='/settings' element={<ProtectedRoute component={SettingsComponent}/> } />
                 <Route path="/feedback-form/:sessionId" element={<SessionFeedbackForm />} />
                 <Route path='/discover' element={<ProtectedRoute component={RagSearchComponent} />}/>
+                <Route path='/chat' element={<ProtectedRoute component={AgentChatPanel} />}/>
                 <Route path='/transcripts/device/:deviceId' element={<TranscriptsComponent />} />
             </Routes>
         </BrowserRouter>

@@ -225,3 +225,14 @@ pretrained_ecapa/label_encoder.ckpt
 pretrained_ecapa/mean_var_norm_emb.ckpt
 
 .vscode
+# Claude Code related files
+CLAUDE.md
+AGENT_*.md
+*_REPORT.md
+*_RESULTS.md
+*_PLAN*.md
+.claude/
+
+# ChromaDB files (local vector database)
+chroma_db/
+server/chroma_db/
