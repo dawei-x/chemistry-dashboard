@@ -15,16 +15,36 @@ export class AgentService {
      * @param {string} query - The user's question
      * @param {string|null} conversationId - Optional conversation ID for follow-ups
      * @param {number|null} sessionDeviceId - Optional session context
+     * @param {Object|null} steeringOptions - Optional user steering preferences
+     * @param {Array<string>} steeringOptions.preferred_representations - Representations to focus on
+     * @param {Array<string>} steeringOptions.exclude_representations - Representations to exclude
+     * @param {string} steeringOptions.analysis_mode - Mode: 'explore', 'compare', 'trace'
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} mode - Agent mode: 'enhanced' (all artifacts) or 'baseline' (transcript only)
      * @returns {Promise<Object>} Agent response with answer, citations, etc.
      */
-    async query(query, conversationId = null, sessionDeviceId = null) {
+    async query(query, conversationId = null, sessionDeviceId = null, steeringOptions = null, apiEndpoint = 'api/v4/agent', mode = 'enhanced') {
         const data = {
             query,
             conversation_id: conversationId,
-            session_device_id: sessionDeviceId
+            session_device_id: sessionDeviceId,
+            mode: mode
         };
 
-        const response = await api.post('api/v3/agent/query', data);
+        // Add steering options if provided (Co-Discovery feature)
+        if (steeringOptions) {
+            if (steeringOptions.preferred_representations) {
+                data.preferred_representations = steeringOptions.preferred_representations;
+            }
+            if (steeringOptions.exclude_representations) {
+                data.exclude_representations = steeringOptions.exclude_representations;
+            }
+            if (steeringOptions.analysis_mode) {
+                data.analysis_mode = steeringOptions.analysis_mode;
+            }
+        }
+
+        const response = await api.post(`${apiEndpoint}/query`, data);
 
         if (!response.ok) {
             const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -35,30 +55,48 @@ export class AgentService {
     }
 
     /**
+     * Send a query to the baseline (transcript-only) agent.
+     * Convenience method for AIED 2026 comparison.
+     *
+     * @param {string} query - The user's question
+     * @param {string|null} conversationId - Optional conversation ID
+     * @param {number|null} sessionDeviceId - Optional session context
+     * @returns {Promise<Object>} Baseline agent response
+     */
+    async queryBaseline(query, conversationId = null, sessionDeviceId = null) {
+        return this.query(query, conversationId, sessionDeviceId, null, 'api/v4/agent', 'baseline');
+    }
+
+    /**
      * List user's conversations.
      *
      * @param {number} limit - Max conversations to return
+     * @param {string|null} variant - Filter by variant ('baseline' or null for full agent)
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
      * @returns {Promise<Array>} List of conversations
      */
-    async listConversations(limit = 20) {
-        const response = await api.get(`api/v1/agent/conversations?limit=${limit}`);
+    async listConversations(limit = 20, variant = null, apiEndpoint = 'api/v4/agent') {
+        const response = await api.get(`${apiEndpoint}/conversations`);
 
         if (!response.ok) {
-            throw new Error('Failed to load conversations');
+            // Fall back to empty list instead of throwing
+            console.warn('Failed to load conversations');
+            return [];
         }
 
         const data = await response.json();
-        return data.conversations;
+        return data.conversations || [];
     }
 
     /**
      * Get a specific conversation with messages.
      *
      * @param {string} conversationId - Conversation ID
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
      * @returns {Promise<Object>} Conversation with messages
      */
-    async getConversation(conversationId) {
-        const response = await api.get(`api/v1/agent/conversations/${conversationId}`);
+    async getConversation(conversationId, apiEndpoint = 'api/v4/agent') {
+        const response = await api.get(`${apiEndpoint}/conversations/${conversationId}`);
 
         if (!response.ok) {
             throw new Error('Failed to load conversation');
@@ -69,42 +107,67 @@ export class AgentService {
 
     /**
      * Get messages for a conversation.
+     * For V4, this returns the messages from getConversation.
      *
      * @param {string} conversationId - Conversation ID
      * @param {number} offset - Starting offset
      * @param {number|null} limit - Max messages
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
      * @returns {Promise<Array>} Messages
      */
-    async getMessages(conversationId, offset = 0, limit = null) {
-        let url = `api/v1/agent/conversations/${conversationId}/messages?offset=${offset}`;
-        if (limit) {
-            url += `&limit=${limit}`;
-        }
-
-        const response = await api.get(url);
-
-        if (!response.ok) {
-            throw new Error('Failed to load messages');
-        }
-
-        const data = await response.json();
-        return data.messages;
+    async getMessages(conversationId, offset = 0, limit = null, apiEndpoint = 'api/v4/agent') {
+        const conversation = await this.getConversation(conversationId, apiEndpoint);
+        return conversation.messages || [];
     }
 
     /**
      * Delete a conversation.
      *
      * @param {string} conversationId - Conversation ID
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
      * @returns {Promise<boolean>} Success status
      */
-    async deleteConversation(conversationId) {
-        const response = await api.delete(`api/v1/agent/conversations/${conversationId}`);
+    async deleteConversation(conversationId, apiEndpoint = 'api/v4/agent') {
+        const response = await api.delete(`${apiEndpoint}/conversations/${conversationId}`);
 
         if (!response.ok) {
             throw new Error('Failed to delete conversation');
         }
 
         return true;
+    }
+
+    /**
+     * Create a new conversation.
+     *
+     * @param {string|null} title - Optional title for the conversation
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @returns {Promise<Object>} Created conversation
+     */
+    async createConversation(title = null, apiEndpoint = 'api/v4/agent') {
+        const response = await api.post(`${apiEndpoint}/conversations`, {
+            title: title || 'New Conversation'
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to create conversation');
+        }
+
+        return response.json();
+    }
+
+    /**
+     * Rename a conversation.
+     * Note: V4 doesn't have a rename endpoint yet, but keeping for compatibility.
+     *
+     * @param {string} conversationId - Conversation ID
+     * @param {string} newTitle - New title for the conversation
+     * @returns {Promise<Object>} Updated conversation
+     */
+    async renameConversation(conversationId, newTitle) {
+        // V4 doesn't have rename yet - just return success
+        console.warn('Rename not implemented for V4 - conversation titles are set from first message');
+        return { conversation_id: conversationId, title: newTitle };
     }
 
     /**

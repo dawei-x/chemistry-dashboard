@@ -1420,7 +1420,7 @@ def trace_concept_to_source(node_id):
 # Agent Conversation Functions
 # -------------------------
 
-def create_agent_conversation(user_id, session_device_id=None, title=None):
+def create_agent_conversation(user_id, session_device_id=None, title=None, agent_version='v3'):
     """
     Create a new agent conversation.
 
@@ -1428,6 +1428,7 @@ def create_agent_conversation(user_id, session_device_id=None, title=None):
         user_id: The user ID
         session_device_id: Optional session device to focus on
         title: Optional conversation title
+        agent_version: Agent version (v3, v4, v5, v6, baseline)
 
     Returns:
         The created AgentConversation object
@@ -1436,20 +1437,22 @@ def create_agent_conversation(user_id, session_device_id=None, title=None):
     conversation = AgentConversation(
         user_id=user_id,
         session_device_id=session_device_id,
-        title=title
+        title=title,
+        agent_version=agent_version
     )
     db.session.add(conversation)
     db.session.commit()
     return conversation
 
 
-def get_agent_conversations(user_id=None, conversation_id=None, limit=50):
+def get_agent_conversations(user_id=None, conversation_id=None, agent_version=None, limit=50):
     """
     Get agent conversations.
 
     Args:
         user_id: Filter by user
         conversation_id: Get specific conversation
+        agent_version: Filter by agent version (v3, v4, v5, v6, baseline)
         limit: Maximum number to return
 
     Returns:
@@ -1463,6 +1466,9 @@ def get_agent_conversations(user_id=None, conversation_id=None, limit=50):
 
     if user_id:
         query = query.filter(AgentConversation.user_id == user_id)
+
+    if agent_version:
+        query = query.filter(AgentConversation.agent_version == agent_version)
 
     return query.order_by(desc(AgentConversation.last_active)).limit(limit).all()
 

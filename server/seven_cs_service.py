@@ -99,37 +99,37 @@ client = OpenAI(api_key=api_key) if api_key else None
 # 7C Framework Definition
 SEVEN_CS_FRAMEWORK = {
     "climate": {
-        "description": "Emotional safety, respect, and comfort in group interactions",
+        "description": "The emotional and affective aspects of the collaboration",
         "indicators": ["respect", "comfort", "tone", "welcome", "safe", "listening", "being heard"],
         "scoring_criteria": "High scores indicate a respectful, comfortable environment where members feel safe to share ideas"
     },
     "communication": {
-        "description": "Quality and effectiveness of information exchange",
+        "description": "The quantity and quality of information shared among group members",
         "indicators": ["verbal", "nonverbal", "discussion", "listening", "sharing", "goals", "expectations"],
         "scoring_criteria": "High scores indicate clear, active communication with good listening and information sharing"
     },
     "compatibility": {
-        "description": "How well group members' working styles complement each other",
+        "description": "How well group members' working and interaction styles complement each other",
         "indicators": ["working style", "active", "equal distribution", "friends", "creative vision", "complementary skills"],
         "scoring_criteria": "High scores indicate compatible work styles and good team synergy"
     },
     "conflict": {
-        "description": "Approaches to handling disagreements and contentious situations",
+        "description": "Approaches to handling disagreements and contentious situations that arise during group work",
         "indicators": ["adapting", "differences", "confronting", "mediator", "resolution", "external validation"],
         "scoring_criteria": "High scores indicate effective conflict resolution and constructive handling of disagreements"
     },
     "context": {
-        "description": "Environmental factors and situational awareness",
+        "description": "Environmental factors and situational awareness: the who, why, and where of the collaboration",
         "indicators": ["privacy", "out of school", "in/out of context", "interest", "group members", "setting"],
         "scoring_criteria": "High scores indicate appropriate context awareness and comfort with the environment"
     },
     "contribution": {
-        "description": "Individual participation and effort balance",
+        "description": "Individual participation and effort balance: what individual participants are, and are not, bringing to the collaboration",
         "indicators": ["accountable", "balance of work", "tracking", "engagement", "effort", "verbal contributions"],
         "scoring_criteria": "High scores indicate balanced participation and equitable contribution from all members"
     },
     "constructive": {
-        "description": "Goal achievement and mutual benefit",
+        "description": "Overall goals of the collaboration and the team's progress toward achieving them",
         "indicators": ["goal", "product", "efficiency", "learning", "mutual benefit", "insights"],
         "scoring_criteria": "High scores indicate productive collaboration toward shared goals with mutual learning"
     }

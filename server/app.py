@@ -88,6 +88,12 @@ from discussion_pulse_routes import discussion_pulse_bp
 from agent_routes import agent_bp
 from agent_v2.routes import agent_v2_bp
 from agent_v3.routes import agent_v3_bp
+from agent_v3.baseline import baseline_bp  # Baseline agent for AIED 2026
+from agent_v4.routes import agent_v4_bp  # High-agency agent for AIED 2026
+from agent_v5.routes import agent_v5_bp  # Context-first agentic for AIED 2026
+from agent_v6.routes import agent_v6_bp  # Definitive architecture for AIED 2026
+from agent_v7.routes import agent_v7_bp  # Full context agent - no truncation limits
+from agent_v8.routes import agent_v8_bp  # Simplified full-context - single LLM call
 
 # Register LLM routes
 app.register_blueprint(llm_bp)
@@ -98,6 +104,12 @@ app.register_blueprint(discussion_pulse_bp)
 app.register_blueprint(agent_bp)
 app.register_blueprint(agent_v2_bp)  # LangGraph agent v2
 app.register_blueprint(agent_v3_bp)  # Ultra Agent v3 - intelligent reasoning
+app.register_blueprint(baseline_bp)  # Baseline agent (transcript-only) for AIED 2026
+app.register_blueprint(agent_v4_bp)  # High-agency agent v4 for AIED 2026
+app.register_blueprint(agent_v5_bp)  # Context-first agentic v5 for AIED 2026
+app.register_blueprint(agent_v6_bp)  # Definitive architecture v6 for AIED 2026
+app.register_blueprint(agent_v7_bp)  # Full context agent v7 - no truncation limits
+app.register_blueprint(agent_v8_bp)  # Simplified full-context v8 - single LLM call
 
 init_concept_websocket(socketio)
 

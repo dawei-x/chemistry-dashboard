@@ -122,23 +122,47 @@
     margin-top: 2px;
 }
 
+.itemActions {
+    display: flex;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.item:hover .itemActions {
+    opacity: 1;
+}
+
+.editBtn,
 .deleteBtn {
     background: transparent;
     border: none;
     color: #a0aec0;
     cursor: pointer;
-    padding: 4px 8px;
-    font-size: 16px;
-    opacity: 0;
-    transition: opacity 0.2s;
+    padding: 4px 6px;
+    font-size: 14px;
+    border-radius: 4px;
+    transition: all 0.2s;
 }
 
-.item:hover .deleteBtn {
-    opacity: 1;
+.editBtn:hover {
+    color: #4299e1;
+    background: #ebf8ff;
 }
 
 .deleteBtn:hover {
     color: #e53e3e;
+    background: #fed7d7;
+}
+
+.editInput {
+    width: 100%;
+    padding: 4px 8px;
+    font-size: 13px;
+    border: 1px solid #4299e1;
+    border-radius: 4px;
+    outline: none;
+    background: white;
 }
 
 .empty {

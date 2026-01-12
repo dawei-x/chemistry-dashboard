@@ -148,17 +148,44 @@ def reason_and_act(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _should_synthesize(results: list, iteration: int) -> bool:
-    """Determine if we have enough information to synthesize."""
+    """Determine if we have enough information to synthesize.
+
+    For compound queries, we want multiple representation types covered.
+    """
     if not results:
         return False
 
-    # Count relevant results
-    relevant_count = sum(1 for r in results if r.get('is_relevant', False))
+    # Count relevant results and distinct representation types
+    relevant_count = 0
+    types_covered = set()
 
-    # Synthesize if we have good results or we've tried multiple times
-    if relevant_count >= 2:
+    TOOL_TO_TYPE = {
+        'search_transcripts': 'transcripts',
+        'get_collaboration_analysis': 'collaboration',
+        'compare_sessions': 'comparison',
+        'get_session_overview': 'overview',
+        'analyze_speaker': 'speaker',
+        'search_concepts': 'concepts',
+        'explore_concepts': 'concepts',
+        'get_concept_map': 'concepts',
+    }
+
+    for r in results:
+        if r.get('is_relevant', False):
+            relevant_count += 1
+            tool = r.get('tool_name', '')
+            if tool in TOOL_TO_TYPE:
+                types_covered.add(TOOL_TO_TYPE[tool])
+
+    # Synthesize if we have good coverage:
+    # - 2+ different representation types (compound query satisfied)
+    # - OR 3+ relevant results from any sources
+    # - OR 1+ relevant after 5 iterations (fallback to prevent infinite loops)
+    if len(types_covered) >= 2:
         return True
-    if relevant_count >= 1 and iteration >= 3:
+    if relevant_count >= 3:
+        return True
+    if relevant_count >= 1 and iteration >= 5:
         return True
 
     return False
@@ -210,6 +237,18 @@ Always respond with a JSON object:
 - For "best" or "compare" queries, use compare_sessions with session IDs [18,19,20,21,22,23,24,25]
 - Consider the conversation context for references like "it" or "that session"
 - Be efficient - don't call unnecessary tools
+
+## CRITICAL: Compound Queries
+
+When a query asks about MULTIPLE aspects (e.g., "collaborate AND concepts", "said AND patterns"),
+you MUST retrieve ALL relevant representations before synthesizing:
+
+- "How did they collaborate AND what was discussed?" → Need BOTH collaboration analysis AND transcripts
+- "What concepts emerged AND how was participation?" → Need BOTH concepts AND collaboration analysis
+- "What was said about X AND how do ideas connect?" → Need BOTH transcripts AND concept exploration
+
+**DO NOT synthesize until you have results from ALL required representation types.**
+Check your previous results - if the query has multiple parts, ensure each part is addressed.
 """
 
 
@@ -229,23 +268,68 @@ def _get_user_prompt(query: str, context: dict, previous_results: list) -> str:
 
     context_str = "\n".join(context_lines) if context_lines else "No prior context"
 
-    # Format previous results
+    # Format previous results and track representation types covered
     results_lines = []
-    for result in previous_results[-3:]:  # Last 3
+    types_covered = set()
+
+    TOOL_TO_TYPE = {
+        'search_transcripts': 'transcripts',
+        'get_collaboration_analysis': 'collaboration',
+        'compare_sessions': 'comparison',
+        'get_session_overview': 'overview',
+        'analyze_speaker': 'speaker',
+        'search_concepts': 'concepts',
+        'explore_concepts': 'concepts',
+        'get_concept_map': 'concepts',
+    }
+
+    for result in previous_results[-5:]:  # Last 5
         tool = result.get('tool_name', 'unknown')
         count = result.get('result_count', 0)
         relevant = "relevant" if result.get('is_relevant', False) else "not relevant"
         query_used = result.get('query_used', '')[:50]
         results_lines.append(f"- {tool}('{query_used}'): {count} results ({relevant})")
 
+        if result.get('is_relevant', False):
+            rep_type = TOOL_TO_TYPE.get(tool)
+            if rep_type:
+                types_covered.add(rep_type)
+
     results_str = "\n".join(results_lines) if results_lines else "No results yet"
+
+    # Add coverage summary for compound query awareness
+    if types_covered:
+        results_str += f"\n\n**Representations covered:** {', '.join(sorted(types_covered))}"
+        results_str += "\n(For compound queries, check if ALL required types are covered before synthesizing)"
+
+    # Add CRITICAL comparison guidance if we're comparing sessions
+    comparison_guidance = ""
+    if context.get('compared_sessions') and len(context.get('compared_sessions', [])) >= 2:
+        sessions = context['compared_sessions']
+        comparison_guidance = f"""
+
+## CRITICAL: COMPARISON QUERY DETECTED
+
+The user is comparing sessions: {sessions}
+
+You MUST:
+1. Use `compare_sessions` tool with `session_ids={sessions}`
+2. Do NOT search for session names as if they were content (e.g., don't search for "country music" in transcripts)
+3. The session IDs {sessions} are already resolved from session names
+4. Do NOT use search_transcripts for comparison queries - use compare_sessions
+
+The sessions to compare are ALREADY RESOLVED to IDs. Use them directly in compare_sessions.
+
+**CORRECT**: compare_sessions(session_ids={sessions})
+**WRONG**: search_transcripts(query="country music")
+"""
 
     return f"""## User Query
 {query}
 
 ## Conversation Context
 {context_str}
-
+{comparison_guidance}
 ## Previous Results This Turn
 {results_str}
 

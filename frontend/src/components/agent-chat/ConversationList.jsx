@@ -12,9 +12,34 @@ const ConversationList = ({
     activeId,
     onSelect,
     onDelete,
+    onRename,
     onNewChat,
     onClose
 }) => {
+    const [editingId, setEditingId] = React.useState(null);
+    const [editTitle, setEditTitle] = React.useState('');
+
+    const handleStartEdit = (e, conv) => {
+        e.stopPropagation();
+        setEditingId(conv.id);
+        setEditTitle(conv.title || '');
+    };
+
+    const handleSaveEdit = (e, convId) => {
+        e.stopPropagation();
+        if (editTitle.trim()) {
+            onRename(convId, editTitle.trim());
+        }
+        setEditingId(null);
+    };
+
+    const handleKeyDown = (e, convId) => {
+        if (e.key === 'Enter') {
+            handleSaveEdit(e, convId);
+        } else if (e.key === 'Escape') {
+            setEditingId(null);
+        }
+    };
     // Group conversations by date
     const groupedConversations = groupByDate(conversations);
 
@@ -40,30 +65,52 @@ const ConversationList = ({
                                 <div
                                     key={conv.id}
                                     className={`${styles.item} ${conv.id === activeId ? styles.active : ''}`}
-                                    onClick={() => onSelect(conv.id)}
+                                    onClick={() => editingId !== conv.id && onSelect(conv.id)}
                                 >
                                     <div className={styles.itemContent}>
-                                        <div className={styles.itemTitle}>
-                                            {conv.title || 'Untitled conversation'}
-                                        </div>
+                                        {editingId === conv.id ? (
+                                            <input
+                                                type="text"
+                                                className={styles.editInput}
+                                                value={editTitle}
+                                                onChange={(e) => setEditTitle(e.target.value)}
+                                                onKeyDown={(e) => handleKeyDown(e, conv.id)}
+                                                onBlur={(e) => handleSaveEdit(e, conv.id)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                autoFocus
+                                            />
+                                        ) : (
+                                            <div className={styles.itemTitle}>
+                                                {conv.title || 'Untitled conversation'}
+                                            </div>
+                                        )}
                                         {conv.session_device_id && (
                                             <div className={styles.itemMeta}>
                                                 Session {conv.session_device_id}
                                             </div>
                                         )}
                                     </div>
-                                    <button
-                                        className={styles.deleteBtn}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (window.confirm('Delete this conversation?')) {
-                                                onDelete(conv.id);
-                                            }
-                                        }}
-                                        title="Delete conversation"
-                                    >
-                                        &times;
-                                    </button>
+                                    <div className={styles.itemActions}>
+                                        <button
+                                            className={styles.editBtn}
+                                            onClick={(e) => handleStartEdit(e, conv)}
+                                            title="Rename conversation"
+                                        >
+                                            ✎
+                                        </button>
+                                        <button
+                                            className={styles.deleteBtn}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                if (window.confirm('Delete this conversation?')) {
+                                                    onDelete(conv.id);
+                                                }
+                                            }}
+                                            title="Delete conversation"
+                                        >
+                                            &times;
+                                        </button>
+                                    </div>
                                 </div>
                             ))}
                         </div>

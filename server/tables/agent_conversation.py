@@ -16,6 +16,7 @@ class AgentConversation(db.Model):
     id = db.Column(db.String(36), primary_key=True)  # UUID
     user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
     session_device_id = db.Column(db.Integer, db.ForeignKey('session_device.id', ondelete='SET NULL'), nullable=True)
+    agent_version = db.Column(db.String(10), nullable=False, default='v3')  # v3, v4, v5, v6, baseline
     title = db.Column(db.String(255), nullable=True)  # Auto-generated from first query
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     last_active = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -26,10 +27,11 @@ class AgentConversation(db.Model):
     messages = db.relationship('AgentMessage', back_populates='conversation',
                                cascade='all, delete-orphan', lazy='dynamic')
 
-    def __init__(self, user_id, session_device_id=None, title=None):
+    def __init__(self, user_id, session_device_id=None, title=None, agent_version='v3'):
         self.id = str(uuid.uuid4())
         self.user_id = user_id
         self.session_device_id = session_device_id
+        self.agent_version = agent_version
         self.title = title
         self.created_at = datetime.utcnow()
         self.last_active = datetime.utcnow()
@@ -39,6 +41,7 @@ class AgentConversation(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'session_device_id': self.session_device_id,
+            'agent_version': self.agent_version,
             'title': self.title,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_active': self.last_active.isoformat() if self.last_active else None,

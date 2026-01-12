@@ -111,6 +111,8 @@ def list_conversations():
 
     Query params:
     - limit: Max number of conversations (default 20)
+    - variant: Filter by variant ('baseline' for baseline conversations,
+               null/missing for full agent conversations)
 
     Response:
     {
@@ -126,16 +128,27 @@ def list_conversations():
     }
     """
     try:
-        limit = request.args.get('limit', 20, type=int)
-        limit = min(limit, 100)  # Cap at 100
+        limit = request.args.get('limit', 1000, type=int)  # Show all conversations by default
+        variant = request.args.get('variant', None)  # 'baseline' or None
 
         from agent import get_orchestrator
         orchestrator = get_orchestrator()
 
         conversations = orchestrator.list_conversations(
             user_id=g.user_id,
-            limit=limit
+            limit=limit * 2  # Fetch extra to allow for filtering
         )
+
+        # Filter by variant based on title prefix
+        if variant == 'baseline':
+            # Only show baseline conversations (title starts with [Baseline])
+            conversations = [c for c in conversations if c.get('title', '').startswith('[Baseline]')]
+        else:
+            # Only show full agent conversations (title does NOT start with [Baseline])
+            conversations = [c for c in conversations if not c.get('title', '').startswith('[Baseline]')]
+
+        # Apply limit after filtering
+        conversations = conversations[:limit]
 
         return jsonify({'conversations': conversations})
 
@@ -207,6 +220,62 @@ def get_conversation(conversation_id):
 
     except Exception as e:
         logger.error(f"Get conversation error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
+@agent_bp.route('/conversations/<conversation_id>', methods=['PATCH'])
+@verify_login
+def rename_conversation(conversation_id):
+    """
+    Rename a conversation.
+
+    Request body:
+    {
+        "title": "New conversation title"
+    }
+
+    Response:
+    {
+        "success": true,
+        "conversation": {
+            "id": "uuid",
+            "title": "New conversation title"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        new_title = data.get('title', '').strip()
+
+        if not new_title:
+            return jsonify({'error': 'Title is required'}), 400
+
+        if len(new_title) > 200:
+            return jsonify({'error': 'Title too long (max 200 characters)'}), 400
+
+        import database as db_helper
+
+        # Verify ownership
+        conversation = db_helper.get_agent_conversations(conversation_id=conversation_id)
+        if not conversation:
+            return jsonify({'error': 'Conversation not found'}), 404
+
+        if conversation.user_id != g.user_id:
+            return jsonify({'error': 'Access denied'}), 403
+
+        # Update title
+        db_helper.update_agent_conversation(conversation_id, title=new_title)
+
+        return jsonify({
+            'success': True,
+            'conversation': {
+                'id': conversation_id,
+                'title': new_title
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Rename conversation error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 

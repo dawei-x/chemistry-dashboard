@@ -1,0 +1,617 @@
+{
+  "timestamp": "2026-01-05T06:01:49.649234",
+  "total_queries": 20,
+  "queries_passed_all_checks": 6,
+  "total_checks": 58,
+  "checks_passed": 6,
+  "pass_rate": 0.10344827586206896,
+  "avg_execution_time": 0.006985592842102051,
+  "results_by_category": {
+    "fast_path": {
+      "total": 3,
+      "passed_all": 0,
+      "checks_passed": 3,
+      "checks_total": 13
+    },
+    "analytical": {
+      "total": 3,
+      "passed_all": 0,
+      "checks_passed": 0,
+      "checks_total": 19
+    },
+    "comparison": {
+      "total": 3,
+      "passed_all": 1,
+      "checks_passed": 1,
+      "checks_total": 11
+    },
+    "graph": {
+      "total": 2,
+      "passed_all": 0,
+      "checks_passed": 1,
+      "checks_total": 10
+    },
+    "speaker": {
+      "total": 2,
+      "passed_all": 1,
+      "checks_passed": 0,
+      "checks_total": 1
+    },
+    "edge_cases": {
+      "total": 4,
+      "passed_all": 3,
+      "checks_passed": 1,
+      "checks_total": 2
+    },
+    "multi_turn": {
+      "total": 3,
+      "passed_all": 1,
+      "checks_passed": 0,
+      "checks_total": 2
+    }
+  },
+  "all_issues": [
+    {
+      "query_id": "F1",
+      "issue": "Expected quotes in answer but none found"
+    },
+    {
+      "query_id": "F3",
+      "issue": "Expected quotes in answer but none found"
+    }
+  ],
+  "all_failures": [
+    {
+      "query_id": "F1",
+      "failure": "Should use fast path: Route was: "
+    },
+    {
+      "query_id": "F1",
+      "failure": "Should mention 'fusion': Not found in answer"
+    },
+    {
+      "query_id": "F1",
+      "failure": "Should mention 'energy': Not found in answer"
+    },
+    {
+      "query_id": "F1",
+      "failure": "Should mention 'temperature': Not found in answer"
+    },
+    {
+      "query_id": "F1",
+      "failure": "Should mention 'plasma': Not found in answer"
+    },
+    {
+      "query_id": "F2",
+      "failure": "Should use fast path: Route was: "
+    },
+    {
+      "query_id": "F2",
+      "failure": "Should list all sessions: Missing: [18, 19, 20, 21, 22, 23, 24, 25]"
+    },
+    {
+      "query_id": "F3",
+      "failure": "Should use fast path: Route was: "
+    },
+    {
+      "query_id": "F3",
+      "failure": "Should mention 'alive': Not found in answer"
+    },
+    {
+      "query_id": "F3",
+      "failure": "Should mention 'consciousness': Not found in answer"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should use PRAS path: pras_stage was: "
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should mention 'Tucker': Not found in answer"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should mention 'systems': Not found in answer"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should mention 'thinking': Not found in answer"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should use tool 'search_transcripts': Tools used: []"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should use tool 'get_concept_map': Tools used: []"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Min tools 3: Only used 0: []"
+    },
+    {
+      "query_id": "A1",
+      "failure": "Should have citations: No citations found"
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should use PRAS path: pras_stage was: "
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should mention '7C': Not found in answer"
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should mention 'collaboration': Not found in answer"
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should mention 'score': Not found in answer"
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should use tool 'get_collaboration_analysis': Tools used: []"
+    },
+    {
+      "query_id": "A2",
+      "failure": "Should have citations: No citations found"
+    },
+    {
+      "query_id": "A3",
+      "failure": "Should use PRAS path: pras_stage was: "
+    },
+    {
+      "query_id": "A3",
+      "failure": "Should mention 'Dinosaurs': Not found in answer"
+    },
+    {
+      "query_id": "A3",
+      "failure": "Should mention 'critical': Not found in answer"
+    },
+    {
+      "query_id": "A3",
+      "failure": "Should mention 'thinking': Not found in answer"
+    },
+    {
+      "query_id": "A3",
+      "failure": "Should have citations: No citations found"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Should mention 'Session 24': Not found in answer"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Should mention 'Country Music': Not found in answer"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Should mention '80': Not found in answer"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Should use tool 'compare_sessions': Tools used: []"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Correct answer should be Session 24: Answer: i encountered an error processing your request: the api_key client option must be set either by passing api_key to the client or by setting the openai_api_key environment variable"
+    },
+    {
+      "query_id": "C1",
+      "failure": "Should use compare_sessions: Tools: []"
+    },
+    {
+      "query_id": "C2",
+      "failure": "Should use PRAS path: pras_stage was: "
+    },
+    {
+      "query_id": "C2",
+      "failure": "Should mention 'Session 19': Not found in answer"
+    },
+    {
+      "query_id": "C2",
+      "failure": "Should mention 'Session 20': Not found in answer"
+    },
+    {
+      "query_id": "C2",
+      "failure": "Should mention 'fusion': Not found in answer"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should mention 'fusion': Not found in answer"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should mention 'energy': Not found in answer"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should mention 'connection': Not found in answer"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should use tool 'find_concept_path': Tools used: []"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should use tool 'get_concept_map': Tools used: []"
+    },
+    {
+      "query_id": "G1",
+      "failure": "Should use graph tools: Tools used: []"
+    },
+    {
+      "query_id": "G2",
+      "failure": "Should mention 'consciousness': Not found in answer"
+    },
+    {
+      "query_id": "G2",
+      "failure": "Should mention 'ethics': Not found in answer"
+    },
+    {
+      "query_id": "G2",
+      "failure": "Should use graph tools: Tools used: []"
+    },
+    {
+      "query_id": "S1",
+      "failure": "Should have citations: No citations found"
+    },
+    {
+      "query_id": "E3",
+      "failure": "Should use compare_sessions: Tools: []"
+    },
+    {
+      "query_id": "M1_T2",
+      "failure": "Lost session focus: current_session_focus is None"
+    },
+    {
+      "query_id": "M1_T3",
+      "failure": "Lost session focus: current_session_focus is None"
+    }
+  ],
+  "detailed_results": [
+    {
+      "query_id": "F1",
+      "query": "What was the Nuclear Fusion session about?",
+      "category": "fast_path",
+      "execution_time": 0.0655360221862793,
+      "passed_checks": [
+        "Answer length 179 >= 100"
+      ],
+      "failed_checks": [
+        "Should use fast path: Route was: ",
+        "Should mention 'fusion': Not found in answer",
+        "Should mention 'energy': Not found in answer",
+        "Should mention 'temperature': Not found in answer",
+        "Should mention 'plasma': Not found in answer"
+      ],
+      "issues": [
+        "Expected quotes in answer but none found"
+      ],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "F2",
+      "query": "List all sessions",
+      "category": "fast_path",
+      "execution_time": 0.0033702850341796875,
+      "passed_checks": [
+        "Answer length 179 >= 50"
+      ],
+      "failed_checks": [
+        "Should use fast path: Route was: ",
+        "Should list all sessions: Missing: [18, 19, 20, 21, 22, 23, 24, 25]"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "F3",
+      "query": "Tell me about session 19",
+      "category": "fast_path",
+      "execution_time": 0.005370616912841797,
+      "passed_checks": [
+        "Mentions 'AI'"
+      ],
+      "failed_checks": [
+        "Should use fast path: Route was: ",
+        "Should mention 'alive': Not found in answer",
+        "Should mention 'consciousness': Not found in answer"
+      ],
+      "issues": [
+        "Expected quotes in answer but none found"
+      ],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "A1",
+      "query": "Did Tucker demonstrate systems thinking in session 19?",
+      "category": "analytical",
+      "execution_time": 0.005926609039306641,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should use PRAS path: pras_stage was: ",
+        "Should mention 'Tucker': Not found in answer",
+        "Should mention 'systems': Not found in answer",
+        "Should mention 'thinking': Not found in answer",
+        "Should use tool 'search_transcripts': Tools used: []",
+        "Should use tool 'get_concept_map': Tools used: []",
+        "Min tools 3: Only used 0: []",
+        "Should have citations: No citations found"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "A2",
+      "query": "How well did participants collaborate in session 20?",
+      "category": "analytical",
+      "execution_time": 0.003398418426513672,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should use PRAS path: pras_stage was: ",
+        "Should mention '7C': Not found in answer",
+        "Should mention 'collaboration': Not found in answer",
+        "Should mention 'score': Not found in answer",
+        "Should use tool 'get_collaboration_analysis': Tools used: []",
+        "Should have citations: No citations found"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "A3",
+      "query": "What evidence shows critical thinking in the Dinosaurs session?",
+      "category": "analytical",
+      "execution_time": 0.0048100948333740234,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should use PRAS path: pras_stage was: ",
+        "Should mention 'Dinosaurs': Not found in answer",
+        "Should mention 'critical': Not found in answer",
+        "Should mention 'thinking': Not found in answer",
+        "Should have citations: No citations found"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "C1",
+      "query": "Which session has the best collaboration quality?",
+      "category": "comparison",
+      "execution_time": 0.0037488937377929688,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should mention 'Session 24': Not found in answer",
+        "Should mention 'Country Music': Not found in answer",
+        "Should mention '80': Not found in answer",
+        "Should use tool 'compare_sessions': Tools used: []",
+        "Correct answer should be Session 24: Answer: i encountered an error processing your request: the api_key client option must be set either by passing api_key to the client or by setting the openai_api_key environment variable",
+        "Should use compare_sessions: Tools: []"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "C2",
+      "query": "Compare the AI Alive and Nuclear Fusion sessions",
+      "category": "comparison",
+      "execution_time": 0.003543376922607422,
+      "passed_checks": [
+        "Mentions 'AI'"
+      ],
+      "failed_checks": [
+        "Should use PRAS path: pras_stage was: ",
+        "Should mention 'Session 19': Not found in answer",
+        "Should mention 'Session 20': Not found in answer",
+        "Should mention 'fusion': Not found in answer"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "C3",
+      "query": "Which sessions discussed technology and its societal impact?",
+      "category": "comparison",
+      "execution_time": 0.003850221633911133,
+      "passed_checks": [],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "G1",
+      "query": "How are ideas about fusion connected to energy in session 20?",
+      "category": "graph",
+      "execution_time": 0.0035271644592285156,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should mention 'fusion': Not found in answer",
+        "Should mention 'energy': Not found in answer",
+        "Should mention 'connection': Not found in answer",
+        "Should use tool 'find_concept_path': Tools used: []",
+        "Should use tool 'get_concept_map': Tools used: []",
+        "Should use graph tools: Tools used: []"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "G2",
+      "query": "What's the connection between AI consciousness and ethics in session 19?",
+      "category": "graph",
+      "execution_time": 0.005227804183959961,
+      "passed_checks": [
+        "Mentions 'AI'"
+      ],
+      "failed_checks": [
+        "Should mention 'consciousness': Not found in answer",
+        "Should mention 'ethics': Not found in answer",
+        "Should use graph tools: Tools used: []"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "S1",
+      "query": "What did David say about fusion in session 20?",
+      "category": "speaker",
+      "execution_time": 0.0035719871520996094,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should have citations: No citations found"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "S2",
+      "query": "Compare Tucker and David's contributions in session 19",
+      "category": "speaker",
+      "execution_time": 0.00422358512878418,
+      "passed_checks": [],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "E1",
+      "query": "What sessions show hypothesis testing?",
+      "category": "edge_cases",
+      "execution_time": 0.0029969215393066406,
+      "passed_checks": [],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "E2",
+      "query": "Tell me about it",
+      "category": "edge_cases",
+      "execution_time": 0.003045320510864258,
+      "passed_checks": [],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "E3",
+      "query": "What's the worst collaboration?",
+      "category": "edge_cases",
+      "execution_time": 0.0035696029663085938,
+      "passed_checks": [],
+      "failed_checks": [
+        "Should use compare_sessions: Tools: []"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "E4",
+      "query": "Session 99 overview",
+      "category": "edge_cases",
+      "execution_time": 0.00339508056640625,
+      "passed_checks": [
+        "Handled gracefully"
+      ],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "M1_T1",
+      "query": "Tell me about the Nuclear Fusion session",
+      "category": "multi_turn",
+      "execution_time": 0.004261970520019531,
+      "passed_checks": [],
+      "failed_checks": [],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "M1_T2",
+      "query": "Who were the speakers?",
+      "category": "multi_turn",
+      "execution_time": 0.002814769744873047,
+      "passed_checks": [],
+      "failed_checks": [
+        "Lost session focus: current_session_focus is None"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    },
+    {
+      "query_id": "M1_T3",
+      "query": "What did David specifically say about temperature?",
+      "category": "multi_turn",
+      "execution_time": 0.003523111343383789,
+      "passed_checks": [],
+      "failed_checks": [
+        "Lost session focus: current_session_focus is None"
+      ],
+      "issues": [],
+      "answer_preview": "I encountered an error processing your request: The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+      "tools_used": [],
+      "confidence": 0.0,
+      "citations_count": 0
+    }
+  ]
+}
