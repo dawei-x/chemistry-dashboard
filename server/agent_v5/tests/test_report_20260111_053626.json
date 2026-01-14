@@ -1,0 +1,293 @@
+{
+  "timestamp": "2026-01-11T05:36:26.142278",
+  "agent_version": "v5",
+  "tests": {
+    "query_understanding": {
+      "total": 14,
+      "passed": 13,
+      "failed": 1,
+      "details": [
+        {
+          "query": "Tell me about the Nuclear Fusion session",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "describe",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              20
+            ],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "What happened in session 19?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "describe",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              19
+            ],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "Summarize the AI Alive discussion",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "describe",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              19
+            ],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "What did Sam say in the AI Alive session?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "speaker",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              19
+            ],
+            "speaker_names": [
+              "Sam"
+            ]
+          }
+        },
+        {
+          "query": "What questions did Lex ask?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "speaker",
+            "retrieval_mode": "semantic",
+            "session_ids": [],
+            "speaker_names": [
+              "Lex"
+            ]
+          }
+        },
+        {
+          "query": "How did David contribute to the Nuclear Fusion discussion?",
+          "passed": false,
+          "issues": [
+            "Intent: expected 'speaker', got 'describe'"
+          ],
+          "actual": {
+            "intent_type": "describe",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              20
+            ],
+            "speaker_names": [
+              "David"
+            ]
+          }
+        },
+        {
+          "query": "Compare sessions 18 and 19",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "compare",
+            "retrieval_mode": "structured",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "What's the difference between Nuclear Fusion and AI Alive?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "compare",
+            "retrieval_mode": "structured",
+            "session_ids": [
+              19,
+              20
+            ],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "Why do some discussions have better collaboration?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "explain",
+            "retrieval_mode": "contrastive",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "What makes some sessions more collaborative than others?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "explain",
+            "retrieval_mode": "contrastive",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "Find discussions about climate change",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "search",
+            "retrieval_mode": "semantic",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "Which sessions discuss artificial intelligence?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "search",
+            "retrieval_mode": "semantic",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "What patterns do you see across all discussions?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "explore",
+            "retrieval_mode": "semantic",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        },
+        {
+          "query": "Tell me something interesting",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "intent_type": "explore",
+            "retrieval_mode": "agentic_only",
+            "session_ids": [],
+            "speaker_names": []
+          }
+        }
+      ]
+    },
+    "context_assembly": {
+      "total": 3,
+      "passed": 3,
+      "failed": 0,
+      "details": [
+        {
+          "query": "Tell me about Nuclear Fusion",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "mode": "structured",
+            "sessions_loaded": [
+              20
+            ],
+            "context_length": 5154
+          }
+        },
+        {
+          "query": "Why do some discussions have better collaboration?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "mode": "contrastive",
+            "sessions_loaded": [
+              18,
+              19,
+              26,
+              26
+            ],
+            "context_length": 810
+          }
+        },
+        {
+          "query": "What patterns exist across sessions?",
+          "passed": true,
+          "issues": [],
+          "actual": {
+            "mode": "fallback",
+            "sessions_loaded": [],
+            "context_length": 483
+          }
+        }
+      ]
+    },
+    "agent_responses": {
+      "total": 4,
+      "passed": 0,
+      "failed": 4,
+      "partial": 0,
+      "details": [
+        {
+          "query": "Tell me about the Nuclear Fusion session",
+          "status": "error",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "What did Sam say in the Is AI Alive discussion?",
+          "status": "error",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "Why do some discussions have better collaboration than other...",
+          "status": "error",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "Compare the collaboration quality of sessions 18 and 19",
+          "status": "error",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        }
+      ]
+    },
+    "triangulation": {
+      "total": 3,
+      "details": [
+        {
+          "query": "How well did the group collaborate in the Nuclear Fusion ses...",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "Analyze the discussion dynamics in session 19...",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "What made the Is AI Alive discussion effective or ineffectiv...",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        }
+      ]
+    },
+    "v4_v5_comparison": {
+      "queries": [
+        {
+          "query": "Tell me about the Nuclear Fusion session",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "What did Sam contribute to the Is AI Alive discussion?",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        },
+        {
+          "query": "Why do some discussions have better collaboration?",
+          "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable"
+        }
+      ]
+    }
+  }
+}

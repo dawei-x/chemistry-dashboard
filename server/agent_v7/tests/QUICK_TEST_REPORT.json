@@ -1,0 +1,105 @@
+{
+  "timestamp": "2025-12-30T16:13:38.705069",
+  "results": [
+    {
+      "name": "Session - List",
+      "passed": true,
+      "ms": 8325.997352600098,
+      "citations": 5,
+      "types": [
+        "session"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Session - Overview",
+      "passed": true,
+      "ms": 9997.894048690796,
+      "citations": 1,
+      "types": [
+        "session"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Transcript - Quote Search",
+      "passed": true,
+      "ms": 17763.190746307373,
+      "citations": 5,
+      "types": [
+        "transcript"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Speaker - Analysis",
+      "passed": true,
+      "ms": 29277.01735496521,
+      "citations": 1,
+      "types": [
+        "transcript"
+      ],
+      "issues": []
+    },
+    {
+      "name": "7C - Collaboration",
+      "passed": true,
+      "ms": 26179.155111312866,
+      "citations": 1,
+      "types": [
+        "7c"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Semantic - Session Attribution",
+      "passed": true,
+      "ms": 16682.66773223877,
+      "citations": 6,
+      "types": [
+        "session",
+        "transcript"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Edge - Short Query",
+      "passed": true,
+      "ms": 15041.460037231445,
+      "citations": 5,
+      "types": [
+        "session"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Edge - Invalid Session",
+      "passed": true,
+      "ms": 6233.700752258301,
+      "citations": 0,
+      "types": [],
+      "issues": []
+    },
+    {
+      "name": "Multi-Turn 1",
+      "passed": true,
+      "ms": 16139.019250869751,
+      "citations": 1,
+      "types": [
+        "session"
+      ],
+      "issues": []
+    },
+    {
+      "name": "Speaker - Comprehensive Profile",
+      "passed": true,
+      "ms": 32671.67019844055,
+      "citations": 1,
+      "types": [
+        "transcript"
+      ],
+      "issues": []
+    }
+  ],
+  "issues": []
+}

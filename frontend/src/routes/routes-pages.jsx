@@ -20,6 +20,7 @@ import {PodsComponent} from '../pods/pods-component';
 import {ProtectedRoute} from './protected-route';
 import {SessionFeedbackForm} from "../feedback-form/session-feedback-form";
 import {RagSearchComponent} from '../rag-search/RagSearchComponent';
+import { AgentChatPanel, BaselineChatPanel, V3ChatPanel, V4ChatPanel, V5ChatPanel, V6ChatPanel, V7ChatPanel } from '../components/agent-chat';
 
 function PageRouter() {
     
@@ -52,6 +53,12 @@ function PageRouter() {
                 <Route path='/settings' element={<ProtectedRoute component={SettingsComponent}/> } />
                 <Route path="/feedback-form/:sessionId" element={<SessionFeedbackForm />} />
                 <Route path='/discover' element={<ProtectedRoute component={RagSearchComponent} />}/>
+                <Route path='/chat-baseline' element={<ProtectedRoute component={BaselineChatPanel} />}/>
+                <Route path='/chat-v3' element={<ProtectedRoute component={V3ChatPanel} />}/>
+                <Route path='/chat-v4' element={<ProtectedRoute component={V4ChatPanel} />}/>
+                <Route path='/chat-v5' element={<ProtectedRoute component={V5ChatPanel} />}/>
+                <Route path='/chat-v6' element={<ProtectedRoute component={V6ChatPanel} />}/>
+                <Route path='/chat-v7' element={<ProtectedRoute component={V7ChatPanel} />}/>
                 <Route path='/transcripts/device/:deviceId' element={<TranscriptsComponent />} />
             </Routes>
         </BrowserRouter>

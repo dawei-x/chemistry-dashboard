@@ -33,6 +33,7 @@ from tables.cluster_node_mapping import cluster_node_mapping
 from tables.llm_metrics import LLMMetrics
 from tables.seven_cs_analysis import SevenCsAnalysis
 from tables.seven_cs_coded_segment import SevenCsCodedSegment
+# Note: AgentConversation and AgentMessage are imported lazily in functions below
 
 # Saves changes made to database (models)
 def save_changes():
@@ -922,3 +923,662 @@ def get_dependents(folder_id = None):
         for folder in folders:
             children.insert(0,folder)
     return dependents
+
+
+# -------------------------
+# Graph Traversal Functions (for Agentic RAG)
+# -------------------------
+
+def get_concept_nodes(session_device_id=None, concept_session_id=None, node_id=None,
+                      node_type=None, speaker_id=None):
+    """
+    Get concept nodes with flexible filtering.
+
+    Args:
+        session_device_id: Filter by session device
+        concept_session_id: Filter by concept session
+        node_id: Get specific node by ID
+        node_type: Filter by node type (question, idea, hypothesis, etc.)
+        speaker_id: Filter by speaker
+
+    Returns:
+        List of ConceptNode objects or single node if node_id specified
+    """
+    query = db.session.query(ConceptNode)
+
+    if node_id:
+        return query.filter(ConceptNode.id == node_id).first()
+
+    if concept_session_id:
+        query = query.filter(ConceptNode.concept_session_id == concept_session_id)
+    elif session_device_id:
+        # Join through ConceptSession to get nodes for a session_device
+        query = query.join(ConceptSession).filter(
+            ConceptSession.session_device_id == session_device_id
+        )
+
+    if node_type:
+        query = query.filter(ConceptNode.node_type == node_type)
+
+    if speaker_id:
+        query = query.filter(ConceptNode.speaker_id == speaker_id)
+
+    return query.order_by(ConceptNode.timestamp).all()
+
+
+def get_concept_edges(session_device_id=None, concept_session_id=None,
+                      source_node_id=None, target_node_id=None, edge_type=None):
+    """
+    Get concept edges with flexible filtering.
+
+    Args:
+        session_device_id: Filter by session device
+        concept_session_id: Filter by concept session
+        source_node_id: Filter by source node
+        target_node_id: Filter by target node
+        edge_type: Filter by edge type (builds_on, challenges, etc.)
+
+    Returns:
+        List of ConceptEdge objects
+    """
+    query = db.session.query(ConceptEdge)
+
+    if concept_session_id:
+        query = query.filter(ConceptEdge.concept_session_id == concept_session_id)
+    elif session_device_id:
+        query = query.join(ConceptSession).filter(
+            ConceptSession.session_device_id == session_device_id
+        )
+
+    if source_node_id:
+        query = query.filter(ConceptEdge.source_node_id == source_node_id)
+
+    if target_node_id:
+        query = query.filter(ConceptEdge.target_node_id == target_node_id)
+
+    if edge_type:
+        query = query.filter(ConceptEdge.edge_type == edge_type)
+
+    return query.all()
+
+
+def get_node_neighbors(node_id, edge_types=None, direction='both'):
+    """
+    Get all concept nodes directly connected to a given node.
+
+    Args:
+        node_id: The center node ID
+        edge_types: Optional list of edge types to filter (e.g., ['builds_on', 'challenges'])
+        direction: 'incoming', 'outgoing', or 'both' (default)
+
+    Returns:
+        List of dicts with neighbor node info and edge details
+    """
+    results = []
+
+    # Get outgoing edges (this node -> others)
+    if direction in ['outgoing', 'both']:
+        outgoing_query = db.session.query(ConceptEdge, ConceptNode).join(
+            ConceptNode, ConceptEdge.target_node_id == ConceptNode.id
+        ).filter(ConceptEdge.source_node_id == node_id)
+
+        if edge_types:
+            outgoing_query = outgoing_query.filter(ConceptEdge.edge_type.in_(edge_types))
+
+        for edge, node in outgoing_query.all():
+            results.append({
+                'node': node.json(),
+                'edge_type': edge.edge_type,
+                'edge_id': edge.id,
+                'direction': 'outgoing'
+            })
+
+    # Get incoming edges (others -> this node)
+    if direction in ['incoming', 'both']:
+        incoming_query = db.session.query(ConceptEdge, ConceptNode).join(
+            ConceptNode, ConceptEdge.source_node_id == ConceptNode.id
+        ).filter(ConceptEdge.target_node_id == node_id)
+
+        if edge_types:
+            incoming_query = incoming_query.filter(ConceptEdge.edge_type.in_(edge_types))
+
+        for edge, node in incoming_query.all():
+            results.append({
+                'node': node.json(),
+                'edge_type': edge.edge_type,
+                'edge_id': edge.id,
+                'direction': 'incoming'
+            })
+
+    return results
+
+
+def get_concept_path(source_node_id, target_node_id, max_depth=4):
+    """
+    Find the shortest path between two concept nodes using BFS.
+
+    Args:
+        source_node_id: Starting node ID
+        target_node_id: Target node ID
+        max_depth: Maximum path length to search
+
+    Returns:
+        List of dicts representing the path, or None if no path found.
+        Each dict contains: node_id, node_text, node_type, edge_type (to next)
+    """
+    from collections import deque
+
+    if source_node_id == target_node_id:
+        node = get_concept_nodes(node_id=source_node_id)
+        if node:
+            return [{'node': node.json(), 'edge_to_next': None}]
+        return None
+
+    # Get concept_session_id for both nodes to ensure they're in same session
+    source_node = get_concept_nodes(node_id=source_node_id)
+    target_node = get_concept_nodes(node_id=target_node_id)
+
+    if not source_node or not target_node:
+        return None
+
+    if source_node.concept_session_id != target_node.concept_session_id:
+        return None  # Nodes not in same session
+
+    # Build adjacency list for the session
+    edges = get_concept_edges(concept_session_id=source_node.concept_session_id)
+    adj = {}
+    for edge in edges:
+        if edge.source_node_id not in adj:
+            adj[edge.source_node_id] = []
+        adj[edge.source_node_id].append((edge.target_node_id, edge.edge_type))
+        # Also add reverse edges for undirected search
+        if edge.target_node_id not in adj:
+            adj[edge.target_node_id] = []
+        adj[edge.target_node_id].append((edge.source_node_id, edge.edge_type))
+
+    # BFS
+    queue = deque([(source_node_id, [source_node_id], [])])  # (current, path, edge_types)
+    visited = {source_node_id}
+
+    while queue:
+        current, path, edge_types = queue.popleft()
+
+        if len(path) > max_depth:
+            continue
+
+        if current not in adj:
+            continue
+
+        for next_node_id, edge_type in adj[current]:
+            if next_node_id in visited:
+                continue
+
+            new_path = path + [next_node_id]
+            new_edge_types = edge_types + [edge_type]
+
+            if next_node_id == target_node_id:
+                # Found path - build result
+                result = []
+                nodes = {n.id: n for n in get_concept_nodes(
+                    concept_session_id=source_node.concept_session_id
+                )}
+                for i, node_id in enumerate(new_path):
+                    node = nodes.get(node_id)
+                    result.append({
+                        'node': node.json() if node else {'id': node_id},
+                        'edge_to_next': new_edge_types[i] if i < len(new_edge_types) else None
+                    })
+                return result
+
+            visited.add(next_node_id)
+            queue.append((next_node_id, new_path, new_edge_types))
+
+    return None  # No path found
+
+
+def get_causal_chain(node_id, direction='forward', max_depth=5):
+    """
+    Extract causal/logical chains from a concept node.
+
+    Follows edges of causal types: causes, leads_to, enables, solves, answers
+
+    Args:
+        node_id: Starting node ID
+        direction: 'forward' (follow outgoing causal edges) or 'backward' (incoming)
+        max_depth: Maximum chain length
+
+    Returns:
+        List of dicts representing the causal chain with nodes and edge types
+    """
+    CAUSAL_EDGE_TYPES = ['causes', 'leads_to', 'enables', 'solves', 'answers', 'results_in']
+
+    start_node = get_concept_nodes(node_id=node_id)
+    if not start_node:
+        return []
+
+    chain = [{'node': start_node.json(), 'edge_type': None}]
+    visited = {node_id}
+    current_id = node_id
+
+    for _ in range(max_depth):
+        # Get edges based on direction
+        if direction == 'forward':
+            edges = get_concept_edges(
+                concept_session_id=start_node.concept_session_id,
+                source_node_id=current_id
+            )
+            edges = [e for e in edges if e.edge_type in CAUSAL_EDGE_TYPES]
+        else:
+            edges = get_concept_edges(
+                concept_session_id=start_node.concept_session_id,
+                target_node_id=current_id
+            )
+            edges = [e for e in edges if e.edge_type in CAUSAL_EDGE_TYPES]
+
+        if not edges:
+            break
+
+        # Take the first unvisited causal edge
+        next_edge = None
+        for edge in edges:
+            next_id = edge.target_node_id if direction == 'forward' else edge.source_node_id
+            if next_id not in visited:
+                next_edge = edge
+                break
+
+        if not next_edge:
+            break
+
+        next_id = next_edge.target_node_id if direction == 'forward' else next_edge.source_node_id
+        next_node = get_concept_nodes(node_id=next_id)
+
+        if next_node:
+            chain.append({
+                'node': next_node.json(),
+                'edge_type': next_edge.edge_type
+            })
+            visited.add(next_id)
+            current_id = next_id
+        else:
+            break
+
+    return chain
+
+
+def get_cluster_subgraph(cluster_id, include_cross_cluster_edges=False):
+    """
+    Get all nodes and edges within a thematic cluster.
+
+    Args:
+        cluster_id: The cluster ID to extract
+        include_cross_cluster_edges: Whether to include edges connecting to nodes outside the cluster
+
+    Returns:
+        Dict with 'cluster', 'nodes', 'edges', and 'internal_edges'
+    """
+    cluster = db.session.query(ConceptCluster).filter(
+        ConceptCluster.id == cluster_id
+    ).first()
+
+    if not cluster:
+        return None
+
+    # Get nodes in cluster
+    cluster_nodes = cluster.nodes or []
+    node_ids = {n.id for n in cluster_nodes}
+
+    # Get edges
+    all_edges = get_concept_edges(concept_session_id=cluster.concept_session_id)
+
+    internal_edges = []
+    cross_cluster_edges = []
+
+    for edge in all_edges:
+        source_in = edge.source_node_id in node_ids
+        target_in = edge.target_node_id in node_ids
+
+        if source_in and target_in:
+            internal_edges.append(edge.json())
+        elif (source_in or target_in) and include_cross_cluster_edges:
+            cross_cluster_edges.append(edge.json())
+
+    result = {
+        'cluster': cluster.json(),
+        'nodes': [n.json() for n in cluster_nodes],
+        'internal_edges': internal_edges,
+        'node_count': len(cluster_nodes),
+        'internal_edge_count': len(internal_edges)
+    }
+
+    if include_cross_cluster_edges:
+        result['cross_cluster_edges'] = cross_cluster_edges
+
+    return result
+
+
+def get_speaker_contribution_graph(session_device_id, speaker_id):
+    """
+    Get the subgraph of concepts contributed by a specific speaker.
+
+    Args:
+        session_device_id: The session to analyze
+        speaker_id: The speaker ID
+
+    Returns:
+        Dict with speaker's nodes, edges between them, and summary stats
+    """
+    # Get speaker's nodes
+    speaker_nodes = get_concept_nodes(
+        session_device_id=session_device_id,
+        speaker_id=speaker_id
+    )
+
+    if not speaker_nodes:
+        return {
+            'speaker_id': speaker_id,
+            'nodes': [],
+            'edges': [],
+            'node_count': 0,
+            'edge_count': 0
+        }
+
+    node_ids = {n.id for n in speaker_nodes}
+
+    # Get concept_session_id
+    concept_session = db.session.query(ConceptSession).filter(
+        ConceptSession.session_device_id == session_device_id
+    ).first()
+
+    if not concept_session:
+        return {
+            'speaker_id': speaker_id,
+            'nodes': [n.json() for n in speaker_nodes],
+            'edges': [],
+            'node_count': len(speaker_nodes),
+            'edge_count': 0
+        }
+
+    # Get edges where both source and target are speaker's nodes
+    all_edges = get_concept_edges(concept_session_id=concept_session.id)
+    speaker_edges = [
+        e for e in all_edges
+        if e.source_node_id in node_ids or e.target_node_id in node_ids
+    ]
+
+    # Categorize edges
+    internal_edges = [e for e in speaker_edges
+                      if e.source_node_id in node_ids and e.target_node_id in node_ids]
+    outgoing_edges = [e for e in speaker_edges
+                      if e.source_node_id in node_ids and e.target_node_id not in node_ids]
+    incoming_edges = [e for e in speaker_edges
+                      if e.source_node_id not in node_ids and e.target_node_id in node_ids]
+
+    # Count node types
+    from collections import Counter
+    type_counts = Counter(n.node_type for n in speaker_nodes if n.node_type)
+
+    return {
+        'speaker_id': speaker_id,
+        'nodes': [n.json() for n in speaker_nodes],
+        'edges': [e.json() for e in speaker_edges],
+        'internal_edges': [e.json() for e in internal_edges],
+        'outgoing_edges': [e.json() for e in outgoing_edges],
+        'incoming_edges': [e.json() for e in incoming_edges],
+        'node_count': len(speaker_nodes),
+        'edge_count': len(speaker_edges),
+        'node_types': dict(type_counts)
+    }
+
+
+def trace_concept_to_source(node_id):
+    """
+    Find the transcript turns that generated a concept node.
+
+    Uses the node's timestamp to find nearby transcripts.
+
+    Args:
+        node_id: The concept node ID
+
+    Returns:
+        Dict with the node, source transcripts, and context
+    """
+    node = get_concept_nodes(node_id=node_id)
+    if not node:
+        return None
+
+    # Get concept session to find session_device_id
+    concept_session = db.session.query(ConceptSession).filter(
+        ConceptSession.id == node.concept_session_id
+    ).first()
+
+    if not concept_session:
+        return {'node': node.json(), 'transcripts': [], 'context': []}
+
+    session_device_id = concept_session.session_device_id
+
+    # Find transcripts near the node's timestamp
+    timestamp = node.timestamp or 0
+    window = 30  # 30 second window
+
+    transcripts = db.session.query(Transcript).filter(
+        Transcript.session_device_id == session_device_id,
+        Transcript.start_time >= timestamp - window,
+        Transcript.start_time <= timestamp + window
+    ).order_by(Transcript.start_time).all()
+
+    # Try to find the best matching transcript
+    best_match = None
+    best_score = 0
+
+    node_text_lower = node.text.lower() if node.text else ""
+
+    for t in transcripts:
+        t_text_lower = t.transcript.lower() if t.transcript else ""
+
+        # Simple word overlap scoring
+        node_words = set(node_text_lower.split())
+        t_words = set(t_text_lower.split())
+        overlap = len(node_words & t_words)
+
+        if overlap > best_score:
+            best_score = overlap
+            best_match = t
+
+    # Get context (surrounding transcripts)
+    context_transcripts = db.session.query(Transcript).filter(
+        Transcript.session_device_id == session_device_id,
+        Transcript.start_time >= timestamp - 60,
+        Transcript.start_time <= timestamp + 60
+    ).order_by(Transcript.start_time).all()
+
+    return {
+        'node': node.json(),
+        'best_match': {
+            'id': best_match.id,
+            'text': best_match.transcript,
+            'speaker_tag': best_match.speaker_tag,
+            'start_time': best_match.start_time,
+            'speaker_id': best_match.speaker_id
+        } if best_match else None,
+        'transcripts': [{
+            'id': t.id,
+            'text': t.transcript,
+            'speaker_tag': t.speaker_tag,
+            'start_time': t.start_time,
+            'speaker_id': t.speaker_id
+        } for t in transcripts],
+        'context': [{
+            'id': t.id,
+            'text': t.transcript,
+            'speaker_tag': t.speaker_tag,
+            'start_time': t.start_time
+        } for t in context_transcripts]
+    }
+
+
+# -------------------------
+# Agent Conversation Functions
+# -------------------------
+
+def create_agent_conversation(user_id, session_device_id=None, title=None, agent_version='v3'):
+    """
+    Create a new agent conversation.
+
+    Args:
+        user_id: The user ID
+        session_device_id: Optional session device to focus on
+        title: Optional conversation title
+        agent_version: Agent version (v3, v4, v5, v6, baseline)
+
+    Returns:
+        The created AgentConversation object
+    """
+    from tables.agent_conversation import AgentConversation
+    conversation = AgentConversation(
+        user_id=user_id,
+        session_device_id=session_device_id,
+        title=title,
+        agent_version=agent_version
+    )
+    db.session.add(conversation)
+    db.session.commit()
+    return conversation
+
+
+def get_agent_conversations(user_id=None, conversation_id=None, agent_version=None, limit=50):
+    """
+    Get agent conversations.
+
+    Args:
+        user_id: Filter by user
+        conversation_id: Get specific conversation
+        agent_version: Filter by agent version (v3, v4, v5, v6, baseline)
+        limit: Maximum number to return
+
+    Returns:
+        List of conversations or single conversation
+    """
+    from tables.agent_conversation import AgentConversation
+    query = db.session.query(AgentConversation)
+
+    if conversation_id:
+        return query.filter(AgentConversation.id == conversation_id).first()
+
+    if user_id:
+        query = query.filter(AgentConversation.user_id == user_id)
+
+    if agent_version:
+        query = query.filter(AgentConversation.agent_version == agent_version)
+
+    return query.order_by(desc(AgentConversation.last_active)).limit(limit).all()
+
+
+def update_agent_conversation(conversation_id, title=None, session_device_id=None):
+    """Update an agent conversation."""
+    conversation = get_agent_conversations(conversation_id=conversation_id)
+    if not conversation:
+        return None
+
+    if title is not None:
+        conversation.title = title
+    if session_device_id is not None:
+        conversation.session_device_id = session_device_id
+
+    conversation.touch()
+    db.session.commit()
+    return conversation
+
+
+def delete_agent_conversation(conversation_id):
+    """Delete an agent conversation and all its messages."""
+    conversation = get_agent_conversations(conversation_id=conversation_id)
+    if not conversation:
+        return False
+
+    db.session.delete(conversation)
+    db.session.commit()
+    return True
+
+
+def add_agent_message(conversation_id, role, content, citations=None,
+                      tools_used=None, reasoning_trace=None, confidence=None):
+    """
+    Add a message to an agent conversation.
+
+    Args:
+        conversation_id: The conversation UUID
+        role: 'user' or 'assistant'
+        content: Message text
+        citations: Optional citation data (for assistant)
+        tools_used: Optional list of tools used (for assistant)
+        reasoning_trace: Optional reasoning steps (for assistant)
+        confidence: Optional confidence score (for assistant)
+
+    Returns:
+        The created AgentMessage object
+    """
+    from tables.agent_message import AgentMessage
+
+    # Update conversation's last_active
+    conversation = get_agent_conversations(conversation_id=conversation_id)
+    if not conversation:
+        return None
+
+    conversation.touch()
+
+    # Auto-generate title from first user message
+    if role == 'user' and not conversation.title:
+        conversation.update_title_from_query(content)
+
+    message = AgentMessage(
+        conversation_id=conversation_id,
+        role=role,
+        content=content,
+        citations=citations,
+        tools_used=tools_used,
+        reasoning_trace=reasoning_trace,
+        confidence=confidence
+    )
+    db.session.add(message)
+    db.session.commit()
+    return message
+
+
+def get_agent_messages(conversation_id, limit=100, offset=0):
+    """
+    Get messages for a conversation.
+
+    Args:
+        conversation_id: The conversation UUID
+        limit: Maximum messages to return
+        offset: Number of messages to skip
+
+    Returns:
+        List of AgentMessage objects in chronological order
+    """
+    from tables.agent_message import AgentMessage
+    return db.session.query(AgentMessage).filter(
+        AgentMessage.conversation_id == conversation_id
+    ).order_by(AgentMessage.created_at).offset(offset).limit(limit).all()
+
+
+def get_conversation_history_for_context(conversation_id, max_messages=10):
+    """
+    Get recent conversation history formatted for LLM context.
+
+    Args:
+        conversation_id: The conversation UUID
+        max_messages: Maximum recent messages to include
+
+    Returns:
+        List of dicts with role and content
+    """
+    from tables.agent_message import AgentMessage
+    messages = db.session.query(AgentMessage).filter(
+        AgentMessage.conversation_id == conversation_id
+    ).order_by(desc(AgentMessage.created_at)).limit(max_messages).all()
+
+    # Reverse to chronological order
+    messages = list(reversed(messages))
+
+    return [{'role': m.role, 'content': m.content} for m in messages]

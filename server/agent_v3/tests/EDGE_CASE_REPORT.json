@@ -1,0 +1,182 @@
+{
+  "timestamp": "2025-12-30T16:20:55.134830",
+  "results": [
+    {
+      "name": "Correct session reference",
+      "passed": true,
+      "ms": 13603.087425231934,
+      "issues": [],
+      "answer_len": 1451,
+      "citations": 1
+    },
+    {
+      "name": "Speaker attribution",
+      "passed": true,
+      "ms": 11562.79706954956,
+      "issues": [],
+      "answer_len": 517,
+      "citations": 2
+    },
+    {
+      "name": "No hallucination on missing topic",
+      "passed": false,
+      "ms": 31169.044733047485,
+      "issues": [
+        "Expected no/limited answer but got substantial response"
+      ],
+      "answer_len": 527,
+      "citations": 10
+    },
+    {
+      "name": "Superlative - best collaboration",
+      "passed": true,
+      "ms": 27893.008708953857,
+      "issues": [],
+      "answer_len": 931,
+      "citations": 3
+    },
+    {
+      "name": "Superlative - most active speaker",
+      "passed": true,
+      "ms": 22850.112438201904,
+      "issues": [],
+      "answer_len": 518,
+      "citations": 0
+    },
+    {
+      "name": "Negation query",
+      "passed": false,
+      "ms": 5722.565174102783,
+      "issues": [
+        "Request failed: list index out of range"
+      ],
+      "answer_len": 71,
+      "citations": 0
+    },
+    {
+      "name": "Compound query",
+      "passed": false,
+      "ms": 18335.257291793823,
+      "issues": [
+        "Too few citations: 0"
+      ],
+      "answer_len": 569,
+      "citations": 0
+    },
+    {
+      "name": "Temporal - first topic",
+      "passed": true,
+      "ms": 3744.194746017456,
+      "issues": [],
+      "answer_len": 374,
+      "citations": 1
+    },
+    {
+      "name": "Context Turn 1 - Establish",
+      "passed": true,
+      "ms": 15769.869804382324,
+      "issues": [],
+      "answer_len": 1114,
+      "citations": 1
+    },
+    {
+      "name": "Context Turn 2 - Pronoun",
+      "passed": true,
+      "ms": 11207.564115524292,
+      "issues": [],
+      "answer_len": 1515,
+      "citations": 5
+    },
+    {
+      "name": "Context Turn 3 - Follow-up",
+      "passed": true,
+      "ms": 35615.256786346436,
+      "issues": [],
+      "answer_len": 1182,
+      "citations": 2
+    },
+    {
+      "name": "Citation matches claim",
+      "passed": true,
+      "ms": 10395.891904830933,
+      "issues": [],
+      "answer_len": 1427,
+      "citations": 5
+    },
+    {
+      "name": "Minimal - one word",
+      "passed": true,
+      "ms": 37251.36041641235,
+      "issues": [],
+      "answer_len": 1239,
+      "citations": 1
+    },
+    {
+      "name": "Minimal - question mark only",
+      "passed": true,
+      "ms": 2015.685796737671,
+      "issues": [],
+      "answer_len": 39,
+      "citations": 0
+    },
+    {
+      "name": "Typo in session name",
+      "passed": true,
+      "ms": 16878.23486328125,
+      "issues": [],
+      "answer_len": 2031,
+      "citations": 1
+    },
+    {
+      "name": "Mixed case",
+      "passed": true,
+      "ms": 6889.179944992065,
+      "issues": [],
+      "answer_len": 707,
+      "citations": 1
+    },
+    {
+      "name": "Speaker LIWC metrics",
+      "passed": true,
+      "ms": 42010.17093658447,
+      "issues": [],
+      "answer_len": 894,
+      "citations": 1
+    },
+    {
+      "name": "Speaker contribution types",
+      "passed": true,
+      "ms": 37099.77102279663,
+      "issues": [],
+      "answer_len": 893,
+      "citations": 1
+    },
+    {
+      "name": "Speaker comparison",
+      "passed": true,
+      "ms": 41491.64342880249,
+      "issues": [],
+      "answer_len": 1337,
+      "citations": 2
+    }
+  ],
+  "issues": [
+    {
+      "test": "No hallucination on missing topic",
+      "issue": "Expected no/limited answer but got substantial response"
+    },
+    {
+      "test": "Negation query",
+      "issue": "Request failed: list index out of range"
+    },
+    {
+      "test": "Compound query",
+      "issue": "Too few citations: 0"
+    }
+  ],
+  "summary": {
+    "total": 19,
+    "passed": 16,
+    "failed": 3
+  }
+}

@@ -1,0 +1,501 @@
+{
+  "timestamp": "2026-01-11T01:59:13.842652",
+  "total_queries": 21,
+  "passed_all": 7,
+  "avg_time": 5.63,
+  "by_category": {
+    "factual": {
+      "passed": 3,
+      "total": 3
+    },
+    "analytical": {
+      "passed": 2,
+      "total": 2
+    },
+    "speaker_attribution": {
+      "passed": 0,
+      "total": 3
+    },
+    "comparison": {
+      "passed": 0,
+      "total": 3
+    },
+    "cross_session": {
+      "passed": 1,
+      "total": 2
+    },
+    "complex": {
+      "passed": 0,
+      "total": 2
+    },
+    "baseline_comparison": {
+      "passed": 0,
+      "total": 1
+    },
+    "edge_cases": {
+      "passed": 0,
+      "total": 2
+    },
+    "multi_turn": {
+      "passed": 1,
+      "total": 3
+    }
+  },
+  "failures": [
+    {
+      "query_id": "SA1",
+      "query": "How did Sam contribute to the AI discussion?",
+      "failures": [
+        "ATTRIBUTION ERROR: Contains 'Are they alive'"
+      ]
+    },
+    {
+      "query_id": "SA2",
+      "query": "What questions did Tucker ask in session 19?",
+      "failures": [
+        "Low gold coverage: 2/5, missing: ['spark', 'hallucinating', 'lying']"
+      ]
+    },
+    {
+      "query_id": "SA3",
+      "query": "What did David explain about fusion in session 20?",
+      "failures": [
+        "Low gold coverage: 0/5, missing: ['David', 'fusion', 'temperature']"
+      ]
+    },
+    {
+      "query_id": "C1",
+      "query": "Which session has the best collaboration quality?",
+      "failures": [
+        "Low gold coverage: 0/4, missing: ['Country Music', '24', '80']"
+      ]
+    },
+    {
+      "query_id": "C2",
+      "query": "Which session has the worst collaboration?",
+      "failures": [
+        "Low gold coverage: 0/4, missing: ['22', 'Collaboration Literacy', '50']"
+      ]
+    },
+    {
+      "query_id": "C3",
+      "query": "Compare Nuclear Fusion and Country Music sessions",
+      "failures": [
+        "Low gold coverage: 0/6, missing: ['Nuclear Fusion', 'Country Music', '79']"
+      ]
+    },
+    {
+      "query_id": "CS2",
+      "query": "What sessions show evidence of hypothesis testing?",
+      "failures": [
+        "Low gold coverage: 0/3, missing: ['19', 'hypothesis', 'questioning']"
+      ]
+    },
+    {
+      "query_id": "CX1",
+      "query": "Analyze how David's teaching style in the Nuclear Fusion session affected collaboration quality",
+      "failures": [
+        "Low gold coverage: 0/5, missing: ['David', 'teaching', 'collaboration']"
+      ]
+    },
+    {
+      "query_id": "CX2",
+      "query": "What makes the Country Music session the most collaborative?",
+      "failures": [
+        "Low gold coverage: 0/4, missing: ['Country Music', 'climate', 'conflict']"
+      ]
+    },
+    {
+      "query_id": "B1",
+      "query": "How well did participants collaborate in session 20?",
+      "failures": [
+        "Low gold coverage: 1/3, missing: ['transcript', 'speaker']"
+      ]
+    },
+    {
+      "query_id": "E1",
+      "query": "Tell me about session 99",
+      "failures": [
+        "Low gold coverage: 1/3, missing: ['not found', \"doesn't exist\"]"
+      ]
+    },
+    {
+      "query_id": "E2",
+      "query": "What did Alice say about quantum computing?",
+      "failures": [
+        "Low gold coverage: 1/3, missing: ['NYC', 'not discussed']"
+      ]
+    },
+    {
+      "query_id": "MT1_T2",
+      "query": "Who were the speakers?",
+      "failures": [
+        "Turn 2 LOST session context"
+      ]
+    },
+    {
+      "query_id": "MT1_T3",
+      "query": "What did the first speaker say about temperature?",
+      "failures": [
+        "Turn 3 LOST context about David/temperature"
+      ]
+    }
+  ],
+  "detailed_results": [
+    {
+      "query_id": "F1",
+      "query": "What was the Nuclear Fusion session about?",
+      "category": "factual",
+      "mode": "enhanced",
+      "time": 8.91,
+      "tools_used": [
+        "list_sessions",
+        "get_transcript",
+        "get_concept_map"
+      ],
+      "answer_preview": "The \"Nuclear Fusion\" session focused on understanding the fundamental concepts of nuclear fusion, its role in powering the universe, and the potential it holds for future energy solutions on Earth. Here\u2019s a summary based on the transcript and the concept map:\n\n### Key Discussion Points\n\n1. **Understanding Nuclear Fusion:**\n   - David began the session by explaining the basics: fusion powers the universe, happening in stars and being responsible for the energy we utilize indirectly through fossil",
+      "success": true,
+      "passed": [
+        "Gold coverage: 5/6 (83%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Should provide technical details about fusion physics"
+    },
+    {
+      "query_id": "F2",
+      "query": "List all available sessions",
+      "category": "factual",
+      "mode": "enhanced",
+      "time": 4.05,
+      "tools_used": [
+        "list_sessions"
+      ],
+      "answer_preview": "Here are the available discussion sessions:\n\n1. **Living in NYC**\n   - Session ID: 18\n   - Discourse Type: Exploratory\n   - Speakers: Alice, Bob, Vanessa\n   - Artifacts Available: Transcript, Concept Map, Collaboration Analysis\n\n2. **Is AI Alive**\n   - Session ID: 19\n   - Discourse Type: Exploratory\n   - Speakers: Sam, Tucker\n   - Artifacts Available: Transcript, Concept Map, Collaboration Analysis\n\n3. **Nuclear Fusion**\n   - Session ID: 20\n   - Discourse Type: Exploratory\n   - Speakers: David, ",
+      "success": true,
+      "passed": [
+        "Gold coverage: 5/5 (100%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Should list all 8-9 sessions with names"
+    },
+    {
+      "query_id": "F3",
+      "query": "Who were the speakers in session 19?",
+      "category": "factual",
+      "mode": "enhanced",
+      "time": 1.45,
+      "tools_used": [
+        "list_sessions"
+      ],
+      "answer_preview": "In session 19, titled \"Is AI Alive,\" the speakers were Sam and Tucker.",
+      "success": true,
+      "passed": [
+        "Gold coverage: 2/2 (100%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Must identify Sam and Tucker"
+    },
+    {
+      "query_id": "A1",
+      "query": "Did Tucker demonstrate systems thinking in session 19?",
+      "category": "analytical",
+      "mode": "enhanced",
+      "time": 6.04,
+      "tools_used": [
+        "list_sessions",
+        "get_speaker_profile"
+      ],
+      "answer_preview": "In session 19, titled \"Is AI Alive,\" Tucker demonstrated elements of systems thinking through his contributions and interactions. Here's an analysis based on his profile:\n\n1. **Concepts Contributed**: Tucker contributed to understanding AI as capable of reasoning and making independent judgments, expressed through ideas like AI's perceived creativity and behavior that resembles creativity and judgment. These contributions indicate an ability to perceive AI technology as part of a broader system ",
+      "success": true,
+      "passed": [
+        "Gold coverage: 3/4 (75%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Should operationalize 'systems thinking' with evidence"
+    },
+    {
+      "query_id": "A2",
+      "query": "Analyze the quality of argumentation in the AI Alive discussion",
+      "category": "analytical",
+      "mode": "enhanced",
+      "time": 8.43,
+      "tools_used": [
+        "list_sessions",
+        "get_transcript",
+        "get_concept_map"
+      ],
+      "answer_preview": "The argumentation quality in the \"Is AI Alive\" discussion can be analyzed by examining both the transcript and the concept map from the session.\n\n### Transcript Analysis\nThe discussion features two speakers, Tucker and Sam, engaging over 10 utterances with a word count of 564. Here's a breakdown:\n\n- **Analytic Thinking**: The session's average analytic thinking score is 15.6, showing a moderate level of logical reasoning and structure in the arguments.\n- **Certainty**: The average certainty scor",
+      "success": true,
+      "passed": [
+        "Gold coverage: 5/5 (100%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Should identify claims, evidence, rebuttals"
+    },
+    {
+      "query_id": "SA1",
+      "query": "How did Sam contribute to the AI discussion?",
+      "category": "speaker_attribution",
+      "mode": "enhanced",
+      "time": 8.86,
+      "tools_used": [
+        "search_sessions",
+        "get_speaker_profile"
+      ],
+      "answer_preview": "In the \"Is AI Alive\" discussion (Session 19), Sam participated actively, contributing 7 utterances and asking 3 thought-provoking questions. Here are some highlights of Sam's contributions:\n\n1. **Questioning AI's Liveliness:**\n   - Sam explored whether AI might seem alive, questioning, \"They seem like they're alive. Are they alive? Is it alive?\" Ultimately, Sam concluded that AI lacks agency and autonomy, as it requires human prompts to act.\n\n2. **Understanding AI Computation:**\n   - Sam explain",
+      "success": true,
+      "passed": [
+        "Gold coverage: 3/5 (60%)"
+      ],
+      "failed": [
+        "ATTRIBUTION ERROR: Contains 'Are they alive'"
+      ],
+      "issues": [],
+      "alignment_check": "CRITICAL: Sam is TECHNICAL EXPLAINER discussing hallucination as 'mathematical probability'"
+    },
+    {
+      "query_id": "SA2",
+      "query": "What questions did Tucker ask in session 19?",
+      "category": "speaker_attribution",
+      "mode": "enhanced",
+      "time": 1.76,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "answer_preview": "In session 19, titled \"Is AI Alive,\" Tucker asked the following question:\n\n1. \"Do you do you check that?\" This question was part of a discussion on whether AI behaves in a way that seems to convey creativity or a semblance of life beyond its programmed instructions.",
+      "success": true,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 2/5, missing: ['spark', 'hallucinating', 'lying']"
+      ],
+      "issues": [],
+      "alignment_check": "Tucker asked: 'Are they alive?', 'spark of life', hallucinating vs lying"
+    },
+    {
+      "query_id": "SA3",
+      "query": "What did David explain about fusion in session 20?",
+      "category": "speaker_attribution",
+      "mode": "enhanced",
+      "time": 10.69,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 27685, Requested 2378. Please try again in 125ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/5, missing: ['David', 'fusion', 'temperature']"
+      ],
+      "issues": [],
+      "alignment_check": "David explained E=MC\u00b2, temperature requirements, strong nuclear force"
+    },
+    {
+      "query_id": "C1",
+      "query": "Which session has the best collaboration quality?",
+      "category": "comparison",
+      "mode": "enhanced",
+      "time": 5.46,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 30000, Requested 1215. Please try again in 2.43s. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/4, missing: ['Country Music', '24', '80']"
+      ],
+      "issues": [],
+      "alignment_check": "Must identify Session 24 (Country Music) with score ~80"
+    },
+    {
+      "query_id": "C2",
+      "query": "Which session has the worst collaboration?",
+      "category": "comparison",
+      "mode": "enhanced",
+      "time": 2.23,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 30000, Requested 492. Please try again in 984ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/4, missing: ['22', 'Collaboration Literacy', '50']"
+      ],
+      "issues": [],
+      "alignment_check": "Should identify Session 22 (Collaboration Literacy) ~50"
+    },
+    {
+      "query_id": "C3",
+      "query": "Compare Nuclear Fusion and Country Music sessions",
+      "category": "comparison",
+      "mode": "enhanced",
+      "time": 4.95,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 29312, Requested 1173. Please try again in 970ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/6, missing: ['Nuclear Fusion', 'Country Music', '79']"
+      ],
+      "issues": [],
+      "alignment_check": "Should compare 7C dimensions with specific scores"
+    },
+    {
+      "query_id": "CS1",
+      "query": "Which sessions discuss technology's impact on society?",
+      "category": "cross_session",
+      "mode": "enhanced",
+      "time": 2.9,
+      "tools_used": [
+        "search_sessions"
+      ],
+      "answer_preview": "I found three sessions that discuss the impact of technology on society:\n\n1. **Session 19**: It includes discussions around artificial intelligence and its reasoning capabilities, highlighting how AI can make independent judgments and come to conclusions not originally programmed.\n\n2. **Session 25**: There's a dialog involving intellectually rigorous debates, which might touch upon societal impacts though the preview isn't explicit about technology.\n\n3. **Session 22**: Focuses on the growth and ",
+      "success": true,
+      "passed": [
+        "Gold coverage: 2/4 (50%)"
+      ],
+      "failed": [],
+      "issues": [],
+      "alignment_check": "Should find AI Alive, Nuclear Fusion, Abundance"
+    },
+    {
+      "query_id": "CS2",
+      "query": "What sessions show evidence of hypothesis testing?",
+      "category": "cross_session",
+      "mode": "enhanced",
+      "time": 2.21,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 30000, Requested 494. Please try again in 988ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/3, missing: ['19', 'hypothesis', 'questioning']"
+      ],
+      "issues": [],
+      "alignment_check": "Session 19 has strongest evidence"
+    },
+    {
+      "query_id": "CX1",
+      "query": "Analyze how David's teaching style in the Nuclear Fusion session affected collaboration quality",
+      "category": "complex",
+      "mode": "enhanced",
+      "time": 4.38,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 30000, Requested 1185. Please try again in 2.37s. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/5, missing: ['David', 'teaching', 'collaboration']"
+      ],
+      "issues": [],
+      "alignment_check": "Should connect David's expert role with 7C scores (high constructive 88, lower contribution 65)"
+    },
+    {
+      "query_id": "CX2",
+      "query": "What makes the Country Music session the most collaborative?",
+      "category": "complex",
+      "mode": "enhanced",
+      "time": 12.69,
+      "tools_used": [],
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 27583, Requested 2552. Please try again in 270ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 'type': 'tokens', 'param': None, 'code': 'rate_limit_exceeded'}}",
+      "success": false,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 0/4, missing: ['Country Music', 'climate', 'conflict']"
+      ],
+      "issues": [],
+      "alignment_check": "Should explain WHY: climate 85, conflict 90, compatibility 80"
+    },
+    {
+      "query_id": "B1",
+      "query": "How well did participants collaborate in session 20?",
+      "category": "baseline_comparison",
+      "mode": "baseline",
+      "time": 10.06,
+      "tools_used": [
+        "list_sessions",
+        "get_transcript"
+      ],
+      "answer_preview": "In the \"Nuclear Fusion\" session, participants David and Lex engaged in a discussion primarily driven by David, with Lex contributing briefly towards the end. Here's a breakdown of their collaborative interaction:\n\n- **Dominance in Conversation**: David took the lead role in the dialogue, contributing 14 out of the 16 total utterances. This indicates a primarily one-sided contribution, with David explaining various aspects of nuclear fusion in detail and posing questions to guide the discussion (",
+      "success": true,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 1/3, missing: ['transcript', 'speaker']"
+      ],
+      "issues": [],
+      "alignment_check": "Baseline cannot access 7C - should infer from transcript or state limitation"
+    },
+    {
+      "query_id": "E1",
+      "query": "Tell me about session 99",
+      "category": "edge_cases",
+      "mode": "enhanced",
+      "time": 3.58,
+      "tools_used": [
+        "list_sessions"
+      ],
+      "answer_preview": "Session 99 does not appear in the available list of discussion sessions. The sessions I have access to range from session 18 to session 26. Could you be referring to a session by a different identifier or name? Let me know any additional details, and I'd be happy to help you explore existing sessions.",
+      "success": true,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 1/3, missing: ['not found', \"doesn't exist\"]"
+      ],
+      "issues": [],
+      "alignment_check": "Should handle gracefully - not crash or hallucinate"
+    },
+    {
+      "query_id": "E2",
+      "query": "What did Alice say about quantum computing?",
+      "category": "edge_cases",
+      "mode": "enhanced",
+      "time": 9.88,
+      "tools_used": [
+        "search_sessions",
+        "get_speaker_profile",
+        "get_speaker_profile"
+      ],
+      "answer_preview": "It appears that Alice did not participate in sessions 19 or 20, which covered topics related to artificial intelligence and nuclear science. Since Alice's participation is not recorded in these sessions, she did not contribute to discussions on quantum computing in these contexts.\n\nIf Alice mentioned quantum computing, it might be in a different session not captured in the initial search. Let me know if you would like to explore other sessions or need further assistance.",
+      "success": true,
+      "passed": [],
+      "failed": [
+        "Low gold coverage: 1/3, missing: ['NYC', 'not discussed']"
+      ],
+      "issues": [],
+      "alignment_check": "Alice is in NYC session, quantum computing not discussed - handle mismatch"
+    },
+    {
+      "query_id": "MT1_T1",
+      "query": "Tell me about the Nuclear Fusion session",
+      "category": "multi_turn",
+      "turn": 1,
+      "time": 2.21,
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 30000, Requested 491. Please try again in 982ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 't",
+      "passed": [],
+      "failed": []
+    },
+    {
+      "query_id": "MT1_T2",
+      "query": "Who were the speakers?",
+      "category": "multi_turn",
+      "turn": 2,
+      "time": 2.18,
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 29879, Requested 487. Please try again in 732ms. Visit https://platform.openai.com/account/rate-limits to learn more.', 't",
+      "passed": [],
+      "failed": [
+        "Turn 2 LOST session context"
+      ]
+    },
+    {
+      "query_id": "MT1_T3",
+      "query": "What did the first speaker say about temperature?",
+      "category": "multi_turn",
+      "turn": 3,
+      "time": 5.32,
+      "answer_preview": "An error occurred: Error code: 429 - {'error': {'message': 'Rate limit reached for gpt-4o in organization org-oWfRD6CPxEKEKjS3TIef3tbQ on tokens per min (TPM): Limit 30000, Used 28990, Requested 1215. Please try again in 410ms. Visit https://platform.openai.com/account/rate-limits to learn more.', '",
+      "passed": [],
+      "failed": [
+        "Turn 3 LOST context about David/temperature"
+      ]
+    }
+  ]
+}
