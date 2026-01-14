@@ -1,5 +1,5 @@
 """
-Query Router Node for BLINC Agent V3
+Query Router Node for BLINC Agent V7
 
 Lightweight classification to route queries based on complexity:
 - Simple queries → Direct tool execution (fast path)

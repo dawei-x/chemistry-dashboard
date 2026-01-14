@@ -1,5 +1,5 @@
 """
-Synthesize Node for BLINC Agent V3
+Synthesize Node for BLINC Agent V7
 
 Generates the final answer from retrieved information.
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deep Edge Case Tests for Agent V3
+Deep Edge Case Tests for Agent V7
 
 Probes corner cases, semantic alignment, and potential failure modes.
 """

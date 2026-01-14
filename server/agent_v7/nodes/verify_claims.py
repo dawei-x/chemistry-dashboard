@@ -1,5 +1,5 @@
 """
-Verify Claims Node for BLINC Agent V3
+Verify Claims Node for BLINC Agent V7
 
 Simplified heuristic-based verification:
 - Counts validated vs unvalidated citations

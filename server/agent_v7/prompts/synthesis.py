@@ -1,5 +1,5 @@
 """
-Synthesis Prompt for BLINC Agent V3
+Synthesis Prompt for BLINC Agent V7
 
 Generates the final answer from retrieved information.
 

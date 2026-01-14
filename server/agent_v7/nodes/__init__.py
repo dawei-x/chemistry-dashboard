@@ -1,5 +1,5 @@
 """
-Nodes for BLINC Agent V3 LangGraph workflow.
+Nodes for BLINC Agent V7 LangGraph workflow.
 
 Simplified architecture (4-stage PRAS, no ReAct fallback):
 - decompose → retrieve → reason → synthesize

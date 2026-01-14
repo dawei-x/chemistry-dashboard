@@ -1,5 +1,5 @@
 """
-Rewrite Query Node for BLINC Agent V3
+Rewrite Query Node for BLINC Agent V7
 
 Implements query rewriting when retrieval fails.
 Part of the CRAG (Corrective RAG) pattern.

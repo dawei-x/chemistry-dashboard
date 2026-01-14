@@ -1,7 +1,7 @@
 """
 BLINC Agent V7 - Full Context Agent
 
-Based on Agent V3 with ALL truncation limits removed.
+Based on Agent V7 with ALL truncation limits removed.
 The LLM receives FULL transcripts, complete concept maps,
 and detailed 7C analysis with all coded segments.
 

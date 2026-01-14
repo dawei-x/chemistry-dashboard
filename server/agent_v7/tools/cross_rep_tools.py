@@ -1,5 +1,5 @@
 """
-Cross-Representational Tools for BLINC Agent V3
+Cross-Representational Tools for BLINC Agent V7
 
 These tools operate ACROSS representations, enabling:
 1. Provenance tracing (artifact → source transcript)

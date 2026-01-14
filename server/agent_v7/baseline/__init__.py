@@ -1,7 +1,7 @@
 """
 Baseline Agent for AIED 2026 Comparison
 
-This module provides a transcript-only baseline variant of Agent V3.
+This module provides a transcript-only baseline variant of Agent V7.
 It uses the same LangGraph workflow but with restricted tools:
 - No concept maps
 - No 7C analysis

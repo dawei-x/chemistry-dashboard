@@ -1,5 +1,5 @@
 """
-Reflect Node for BLINC Agent V3
+Reflect Node for BLINC Agent V7
 
 Self-reflection on the generated answer before returning.
 """

@@ -1,5 +1,5 @@
 """
-Reflection Prompt for BLINC Agent V3
+Reflection Prompt for BLINC Agent V7
 
 Self-reflection on the generated answer before returning to user.
 """

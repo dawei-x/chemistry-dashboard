@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive Test Suite for BLINC Agent V3
+Comprehensive Test Suite for BLINC Agent V7
 
 Tests cover:
 1. Fast path routing accuracy
@@ -36,7 +36,7 @@ class TestResult:
 
 
 class AgentTester:
-    """Comprehensive tester for Agent V3."""
+    """Comprehensive tester for Agent V7."""
 
     def __init__(self):
         self.session = requests.Session()
@@ -52,7 +52,7 @@ class AgentTester:
         return response.status_code == 200
 
     def query(self, query: str, conversation_id: str = None) -> Dict[str, Any]:
-        """Send a query to Agent V3."""
+        """Send a query to Agent V7."""
         if not conversation_id:
             self.conversation_counter += 1
             conversation_id = f"test-{self.conversation_counter}-{int(time.time())}"
@@ -677,7 +677,7 @@ class AgentTester:
     def run_all_tests(self):
         """Run all tests and generate report."""
         print("=" * 60)
-        print("BLINC Agent V3 Comprehensive Test Suite")
+        print("BLINC Agent V7 Comprehensive Test Suite")
         print("=" * 60)
 
         if not self.login():

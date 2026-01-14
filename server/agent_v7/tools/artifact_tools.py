@@ -1,5 +1,5 @@
 """
-Artifact-Centric Tools for BLINC Agent V3
+Artifact-Centric Tools for BLINC Agent V7
 
 OPTIMAL 6-TOOL DESIGN
 =====================

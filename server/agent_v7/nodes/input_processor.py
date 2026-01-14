@@ -1,5 +1,5 @@
 """
-Input Processor Node for BLINC Agent V3
+Input Processor Node for BLINC Agent V7
 
 Preprocesses the query and resolves references from conversation context.
 """

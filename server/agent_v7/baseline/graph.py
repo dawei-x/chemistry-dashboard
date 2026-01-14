@@ -3,7 +3,7 @@ LangGraph Workflow for Baseline Agent (Transcript-Only)
 
 AIED 2026 Comparison Baseline
 =============================
-Uses the SAME workflow structure as Agent V3 but with:
+Uses the SAME workflow structure as Agent V7 but with:
 - Baseline tool registry (transcript-only)
 - Baseline tool descriptions in prompts
 - Tool execution validation to reject non-baseline tools
@@ -319,7 +319,7 @@ def create_baseline_graph() -> StateGraph:
     """
     Create the baseline agent workflow graph.
 
-    Same structure as Agent V3 but with baseline node wrappers.
+    Same structure as Agent V7 but with baseline node wrappers.
     """
     graph = StateGraph(AgentState)
 

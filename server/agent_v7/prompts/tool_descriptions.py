@@ -1,5 +1,5 @@
 """
-Tool Descriptions for BLINC Agent V3
+Tool Descriptions for BLINC Agent V7
 
 8-TOOL ARTIFACT-CENTRIC DESIGN
 ==============================

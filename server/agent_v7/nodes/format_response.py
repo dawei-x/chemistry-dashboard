@@ -1,5 +1,5 @@
 """
-Format Response Node for BLINC Agent V3
+Format Response Node for BLINC Agent V7
 
 Formats the final response for the API.
 

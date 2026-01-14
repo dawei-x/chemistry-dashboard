@@ -1,5 +1,5 @@
 """
-Tools for BLINC Agent V3
+Tools for BLINC Agent V7
 
 OPTIMAL 6-TOOL DESIGN (Recommended)
 ===================================

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive Agent V3 Evaluation Suite
+Comprehensive Agent V7 Evaluation Suite
 
 Tests the agent with various query types and evaluates outputs
 against expectations. Documents issues found.

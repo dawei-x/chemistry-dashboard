@@ -1,5 +1,5 @@
 """
-Query Decomposer Node for BLINC Agent V3
+Query Decomposer Node for BLINC Agent V7
 
 PRAS Stage 1: Query Understanding & Decomposition
 

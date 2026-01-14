@@ -5,7 +5,7 @@ AIED 2026 Comparison Baseline
 =============================
 Endpoint: /api/v3/agent/baseline/query
 
-Same interface as the full Agent V3 but uses transcript-only tools.
+Same interface as the full Agent V7 but uses transcript-only tools.
 Responses include 'agent_variant': 'baseline' for benchmarking.
 """
 

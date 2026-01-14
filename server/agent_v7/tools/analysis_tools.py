@@ -1,5 +1,5 @@
 """
-Analysis Tools for BLINC Agent V3
+Analysis Tools for BLINC Agent V7
 
 Tools for deep analysis of sessions, collaboration, and speakers.
 """

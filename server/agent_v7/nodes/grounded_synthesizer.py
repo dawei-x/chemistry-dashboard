@@ -373,7 +373,7 @@ def _format_synthesis_input(
                     if text:  # Only require text, speaker defaults to "Speaker"
                         all_transcripts.append((tool_session_id, speaker, text))
                         added_count += 1
-                        # Track speaker-session mapping for V3-style validation
+                        # Track speaker-session mapping for V7-style validation
                         if speaker and tool_session_id and isinstance(tool_session_id, int):
                             if speaker not in speakers_found:
                                 speakers_found[speaker] = set()

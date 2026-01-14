@@ -1,5 +1,5 @@
 """
-Search Tools for BLINC Agent V3
+Search Tools for BLINC Agent V7
 
 Clean search tool implementations using existing RAG infrastructure.
 """

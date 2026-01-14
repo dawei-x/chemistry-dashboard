@@ -1,5 +1,5 @@
 """
-Reason and Act Node for BLINC Agent V3
+Reason and Act Node for BLINC Agent V7
 
 The core reasoning loop that decides what action to take.
 Uses GPT-4o with tool descriptions to naturally select tools.

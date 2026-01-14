@@ -1,5 +1,5 @@
 """
-Targeted Retriever Node for BLINC Agent V3
+Targeted Retriever Node for BLINC Agent V7
 
 PRAS Stage 3: Targeted Retrieval with Reflection
 

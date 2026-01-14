@@ -1,5 +1,5 @@
 """
-Representation Planner Node for BLINC Agent V3
+Representation Planner Node for BLINC Agent V7
 
 PRAS Stage 2: Representation Planning
 

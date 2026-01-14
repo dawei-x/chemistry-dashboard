@@ -1,5 +1,5 @@
 """
-Comprehensive Tool Tests for BLINC Agent V3
+Comprehensive Tool Tests for BLINC Agent V7
 
 Tests the OPTIMAL 6-TOOL DESIGN with complex, realistic queries.
 Evaluates not just correctness, but alignment with design principles:

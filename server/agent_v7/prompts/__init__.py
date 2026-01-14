@@ -1,5 +1,5 @@
 """
-Prompts for BLINC Agent V3
+Prompts for BLINC Agent V7
 
 Well-crafted prompts that enable intelligent reasoning
 without keyword matching.

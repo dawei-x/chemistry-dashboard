@@ -1,5 +1,5 @@
 """
-LLM Abstraction Layer for BLINC Agent V3
+LLM Abstraction Layer for BLINC Agent V7
 
 Provides a unified interface for different LLM providers:
 - OpenAI (GPT-4o, GPT-4o-mini)

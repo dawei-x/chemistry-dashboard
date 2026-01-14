@@ -1,5 +1,5 @@
 """
-Grade Results Node for BLINC Agent V3
+Grade Results Node for BLINC Agent V7
 
 Implements Self-RAG / CRAG style document grading.
 Evaluates relevance of retrieved documents and decides

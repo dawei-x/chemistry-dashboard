@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Quick Agent V3 Tests - Focused subset for faster iteration.
+Quick Agent V7 Tests - Focused subset for faster iteration.
 """
 
 import json

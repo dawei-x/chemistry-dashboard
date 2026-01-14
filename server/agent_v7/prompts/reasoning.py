@@ -1,5 +1,5 @@
 """
-Reasoning Prompts for BLINC Agent V3
+Reasoning Prompts for BLINC Agent V7
 
 The core reasoning prompt that enables intelligent tool selection
 without keyword matching.

@@ -1,5 +1,5 @@
 """
-Document Grading Prompt for BLINC Agent V3
+Document Grading Prompt for BLINC Agent V7
 
 Implements Self-RAG / CRAG style document relevance grading.
 """

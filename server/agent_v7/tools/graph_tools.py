@@ -1,5 +1,5 @@
 """
-Graph Navigation Tools for BLINC Agent V3
+Graph Navigation Tools for BLINC Agent V7
 
 Tools for exploring and navigating concept map graphs.
 """

@@ -1,5 +1,5 @@
 """
-LangGraph Workflow for BLINC Agent V3
+LangGraph Workflow for BLINC Agent V7
 
 A clean, intelligent agent workflow with query-adaptive reasoning
 and source verification for AIED 2026.
@@ -215,7 +215,7 @@ def get_compiled_graph():
     if _compiled_graph is None:
         graph = create_agent_graph()
         _compiled_graph = graph.compile()
-        logger.info("Agent V3 graph compiled successfully with PRAS architecture")
+        logger.info("Agent V7 graph compiled successfully with PRAS architecture")
 
     return _compiled_graph
 

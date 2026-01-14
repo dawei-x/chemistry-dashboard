@@ -1,5 +1,5 @@
 """
-Execute Tool Node for BLINC Agent V3
+Execute Tool Node for BLINC Agent V7
 
 Executes the tool selected by reason_and_act.
 

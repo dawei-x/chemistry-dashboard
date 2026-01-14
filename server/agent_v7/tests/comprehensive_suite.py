@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comprehensive Agent V3 Test Suite
+Comprehensive Agent V7 Test Suite
 
 Based on actual database contents:
 - Sessions 18-25 with specific topics and speakers

@@ -1,5 +1,5 @@
 """
-Reasoning Tools for BLINC Agent V3
+Reasoning Tools for BLINC Agent V7
 
 Tools that help the agent think and interact with users.
 """
