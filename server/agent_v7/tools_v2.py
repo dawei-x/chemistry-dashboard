@@ -94,11 +94,12 @@ def list_sessions() -> Dict[str, Any]:
         sid = s.get('session_id', s.get('session_device_id', '?'))
         name = s.get('session_name', s.get('name', 'Unnamed'))
         speakers = s.get('speakers', [])
+        speaker_count = s.get('speaker_count', len(speakers))
         speaker_str = ", ".join(speakers[:5]) if speakers else "Unknown"
         collab_score = s.get('collaboration_score')
 
         lines.append(f"Session {sid}: {name}")
-        lines.append(f"  Speakers: {speaker_str}")
+        lines.append(f"  Speakers ({speaker_count}): {speaker_str}")
 
         # Show collaboration score prominently
         if collab_score is not None:

@@ -77,10 +77,13 @@ def list_sessions() -> Dict[str, Any]:
                 s.name as session_name,
                 (SELECT cs.discourse_type FROM concept_session cs
                  WHERE cs.session_device_id = sd.id LIMIT 1) as discourse_type,
-                (SELECT GROUP_CONCAT(DISTINCT sp.alias)
+                (SELECT GROUP_CONCAT(DISTINCT COALESCE(NULLIF(sp.alias, ''), CONCAT('Speaker_', sp.id)))
                  FROM transcript t
                  JOIN speaker sp ON t.speaker_id = sp.id
                  WHERE t.session_device_id = sd.id) as speakers,
+                (SELECT COUNT(DISTINCT t.speaker_id)
+                 FROM transcript t
+                 WHERE t.session_device_id = sd.id) as speaker_count,
                 (SELECT COUNT(*) FROM transcript WHERE session_device_id = sd.id) as transcript_count,
                 (SELECT COUNT(*) FROM concept_node cn
                  JOIN concept_session ccs ON cn.concept_session_id = ccs.id
@@ -115,6 +118,7 @@ def list_sessions() -> Dict[str, Any]:
                 "session_name": row['session_name'],
                 "discourse_type": row['discourse_type'],
                 "speakers": row['speakers'].split(',') if row['speakers'] else [],
+                "speaker_count": row['speaker_count'] or 0,
                 "collaboration_score": collaboration_score
             })
 

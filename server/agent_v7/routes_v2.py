@@ -16,7 +16,7 @@ from .memory import get_memory, clear_memory
 
 logger = logging.getLogger(__name__)
 
-AGENT_VERSION = 'v7.1'
+AGENT_VERSION = 'v7.2'  # Pure ReAct architecture - no classifier/exploratory path
 
 # Create blueprint
 agent_v7_bp = Blueprint('agent_v7', __name__, url_prefix='/api/v7/agent')

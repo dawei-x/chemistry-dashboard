@@ -1,16 +1,18 @@
 """
-ReAct Agent for BLINC Agent V7
+ReAct Agent for BLINC Agent V7 (Pure ReAct Architecture)
 
 A simple, flexible agent that:
 1. Uses LLM to decide what tools to call (not hardcoded patterns)
 2. Maintains conversation memory across turns
 3. Produces scaffolded responses with specific evidence
 4. Respects user steering preferences
+5. Supports artifact steering (user controls which tools to use)
 
-V7 Enhancement: Query Classification + Exploratory Retrieval
-- Classifies queries as exploratory (cross-session) or targeted (single-session)
-- Exploratory queries get systematic multi-session retrieval
-- Targeted queries use the flexible ReAct loop
+V7.2: Pure ReAct - All queries go through the ReAct loop.
+The LLM decides what tools to call based on:
+- Query understanding
+- Tool guidance in system prompt
+- User steering constraints
 """
 
 import json
@@ -27,8 +29,8 @@ from .prompts_v2 import (
     format_tool_descriptions_for_llm,
     TOOL_DESCRIPTIONS
 )
-from .classifier import classify_query, QueryClassification, is_simple_discovery_query
-from .exploratory import retrieve_exploratory, format_exploratory_evidence_for_synthesis, ExploratoryResult
+# Note: classifier.py and exploratory.py are deprecated in V7.2
+# All queries now go through pure ReAct loop
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +70,18 @@ class AgentResponse:
 
 class ScaffoldingAgent:
     """
-    ReAct-based agent for scaffolded artifact exploration.
+    Pure ReAct agent for scaffolded artifact exploration.
 
     Key features:
-    - Query classification for exploratory vs targeted routing
-    - Systematic multi-session retrieval for exploratory queries
-    - LLM decides tool usage for targeted queries (not hardcoded patterns)
+    - LLM decides what tools to call (no hardcoded routing)
+    - Tool guidance in system prompt for different query types
+    - Artifact steering support (user controls data sources)
     - Conversation memory for context persistence
     - Steering compliance with validation
     - Scaffolded response generation
+
+    V7.2: Removed classifier and exploratory path. LLM reasoning replaces
+    hardcoded query routing.
     """
 
     def __init__(self, conversation_id: str):
@@ -112,11 +117,15 @@ class ScaffoldingAgent:
 
         This is the main entry point for the agent.
 
-        Flow:
-        1. Check for simple discovery queries (fast path)
-        2. Classify query as exploratory or targeted
-        3. Route exploratory queries to systematic multi-session retrieval
-        4. Route targeted queries to ReAct loop
+        V7.2 Flow (Pure ReAct):
+        1. Extract context (session/speaker focus, steering)
+        2. Run ReAct loop - LLM decides what tools to call
+        3. Synthesize and return response
+
+        The LLM uses tool guidance in system prompt to decide:
+        - list_sessions for structural/superlative/hypothesis queries
+        - search_sessions for topic-based discovery
+        - Appropriate artifact tools based on query needs
 
         Args:
             query: User's query
@@ -147,208 +156,32 @@ class ScaffoldingAgent:
             self.memory.update_speaker_focus(speaker)
 
         # =========================================================
-        # FAST PATH: Simple discovery queries
+        # PURE REACT: LLM decides what tools to call
         # =========================================================
-        is_simple, tool_name, tool_args = is_simple_discovery_query(query)
-        if is_simple and tool_name:
-            logger.info(f"[Agent] Fast path: {tool_name}")
-            result = execute_tool(tool_name, tool_args or {})
-            evidence = [{"tool": tool_name, "params": tool_args or {}, "result": result}]
-            answer = self._format_simple_discovery_response(query, result)
-            self.memory.add_assistant_message(answer)
-            return AgentResponse(
-                answer=answer,
-                evidence=evidence,
-                tool_calls_made=[ToolCall(name=tool_name, params=tool_args or {})],
-                session_focus=self.memory.session_focus,
-                speaker_focus=self.memory.speaker_focus,
-                suggested_explorations=["You can ask about specific sessions or search for topics."]
-            )
+        # No classifier routing - all queries go through ReAct
+        # The system prompt guides the LLM on tool selection:
+        # - Hypothesis testing → list_sessions first
+        # - Structural queries → list_sessions for metadata
+        # - Topic queries → search_sessions
+        # - Artifact steering → respect user constraints
+        return self._run_react_loop(query, steering)
 
-        # =========================================================
-        # CLASSIFY QUERY: Exploratory vs Targeted
-        # =========================================================
-        classification = classify_query(query, self.memory)
-        logger.info(f"[Agent] Classification: is_exploratory={classification.is_exploratory}, reason={classification.reason}")
-
-        if classification.is_exploratory:
-            # =========================================================
-            # EXPLORATORY PATH: Systematic multi-session retrieval
-            # =========================================================
-            return self._handle_exploratory_query(query, classification, steering)
-        else:
-            # =========================================================
-            # TARGETED PATH: ReAct loop
-            # =========================================================
-            return self._handle_targeted_query(query, classification, steering)
-
-    def _format_simple_discovery_response(self, query: str, result: Dict[str, Any]) -> str:
-        """Format a simple response for discovery queries."""
-        display = result.get('display', '')
-        if display:
-            return f"Here's what I found:\n\n{display}"
-        return "I found some sessions. Would you like to explore any of them?"
-
-    def _handle_exploratory_query(
+    def _run_react_loop(
         self,
         query: str,
-        classification: QueryClassification,
         steering: SteeringDirectives
     ) -> AgentResponse:
         """
-        Handle exploratory (cross-session) queries.
+        Run the ReAct loop to process a query.
 
-        Uses systematic multi-session retrieval instead of ReAct loop.
-        This ensures we check ALL relevant sessions, not just what LLM decides.
+        The LLM decides what tools to call based on:
+        - Query understanding
+        - Tool guidance in system prompt
+        - User steering constraints
+
+        This is the core of V7.2 - all queries go through this loop.
         """
-        logger.info(f"[Agent] Exploratory path: {classification.reason}")
-
-        # Systematic retrieval across sessions
-        # Note: retrieve_exploratory now handles superlative queries intelligently,
-        # picking top candidates based on collaboration scores instead of fixed limit
-        exploratory_result = retrieve_exploratory(
-            query=query,
-            classification=classification,
-            tools=self._tools_dict
-            # max_sessions now defaults to 20, and superlative queries use smart selection
-        )
-
-        logger.info(f"[Agent] Retrieved evidence from {len(exploratory_result.evidence)} sessions")
-
-        # Convert to evidence format
-        evidence = []
-        tool_calls_made = []
-
-        # Track that search_sessions was used to find relevant sessions
-        if exploratory_result.sessions_searched:
-            tool_calls_made.append(ToolCall(
-                name='search_sessions',
-                params={'query': query, 'sessions_found': exploratory_result.sessions_searched},
-                reason='Find relevant sessions for exploratory query'
-            ))
-
-        for ev in exploratory_result.evidence:
-            # Map artifact_type to actual tool name
-            tool_name = f"get_{ev.artifact_type}"
-            if ev.artifact_type == 'collaboration':
-                tool_name = 'get_7c_analysis'
-
-            evidence.append({
-                "tool": tool_name,
-                "params": {"session_id": ev.session_id},
-                "result": ev.raw_result
-            })
-            tool_calls_made.append(ToolCall(
-                name=tool_name,
-                params={"session_id": ev.session_id},
-                reason="Exploratory retrieval"
-            ))
-
-        # Synthesize cross-session response
-        answer = self._synthesize_exploratory_response(query, exploratory_result, steering)
-
-        # Generate suggestions
-        suggestions = self._generate_exploratory_suggestions(query, exploratory_result)
-
-        # Update memory
-        self.memory.add_assistant_message(answer)
-
-        return AgentResponse(
-            answer=answer,
-            evidence=evidence,
-            tool_calls_made=tool_calls_made,
-            session_focus=None,  # No single session focus for exploratory
-            speaker_focus=self.memory.speaker_focus,
-            suggested_explorations=suggestions
-        )
-
-    def _synthesize_exploratory_response(
-        self,
-        query: str,
-        exploratory_result: ExploratoryResult,
-        steering: SteeringDirectives
-    ) -> str:
-        """
-        Synthesize a response from cross-session evidence.
-
-        Uses a specialized prompt for cross-session synthesis.
-        """
-        if not exploratory_result.evidence:
-            return "I searched across available sessions but couldn't find relevant information for your query. Could you try rephrasing or being more specific?"
-
-        # Format evidence for synthesis
-        evidence_str = format_exploratory_evidence_for_synthesis(exploratory_result)
-
-        memory_context = self.memory.get_context_for_llm()
-        system_prompt = format_system_prompt(
-            memory_context=memory_context,
-            steering_instructions=steering.raw_instructions
-        )
-
-        user_message = f"""Synthesize findings across multiple sessions to answer this query:
-
-Query: {query}
-
-{evidence_str}
-
-Instructions for synthesis:
-1. Compare and contrast findings across sessions
-2. Cite specific evidence from each session (e.g., "In Session 19, speaker X said...")
-3. Identify patterns or themes that appear across sessions
-4. Note any differences or contradictions between sessions
-5. Provide a comprehensive answer that draws from ALL sessions, not just one
-
-When interpreting speaker participation patterns:
-- Low participation % + high question rate often indicates a facilitator/interviewer role
-- Compare actual participation to equal share to assess dominance vs deference
-- Consistent patterns across sessions suggest a stable role (host, facilitator, etc.)
-
-Write a clear, well-organized response that helps the user understand findings across all sessions."""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message}
-        ]
-
-        try:
-            response = self.llm.complete(
-                messages=messages,
-                temperature=0.4,
-                max_tokens=4000
-            )
-            return response.content
-        except Exception as e:
-            logger.error(f"[Agent] Exploratory synthesis error: {e}")
-            # Fallback: return the summary
-            return f"I found information across {len(exploratory_result.evidence)} sessions:\n\n{exploratory_result.summary}\n\nPlease ask a more specific question to explore these sessions further."
-
-    def _generate_exploratory_suggestions(self, query: str, result: ExploratoryResult) -> List[str]:
-        """Generate follow-up suggestions for exploratory queries."""
-        suggestions = []
-
-        if result.sessions_searched:
-            # Suggest drilling into specific sessions
-            session_id = result.sessions_searched[0]
-            suggestions.append(f"Explore session {session_id} in more detail")
-
-            if len(result.sessions_searched) > 1:
-                suggestions.append(f"Compare collaboration quality between sessions {result.sessions_searched[0]} and {result.sessions_searched[1]}")
-
-        return suggestions[:2]
-
-    def _handle_targeted_query(
-        self,
-        query: str,
-        classification: QueryClassification,
-        steering: SteeringDirectives
-    ) -> AgentResponse:
-        """
-        Handle targeted (single-session) queries using ReAct loop.
-
-        This is the original ReAct implementation for queries about
-        specific sessions, speakers, or topics within a known context.
-        """
-        logger.info(f"[Agent] Targeted path: {classification.reason}")
+        logger.info(f"[Agent] Running ReAct loop for query")
 
         # Build context
         memory_context = self.memory.get_context_for_llm()
@@ -362,12 +195,12 @@ Write a clear, well-organized response that helps the user understand findings a
             logger.info(f"[Agent] Iteration {iteration + 1}/{MAX_ITERATIONS}")
 
             # Decide next action
+            # Note: suggested_tool removed in V7.2 - LLM uses prompt guidance instead
             action = self._decide_action(
                 query=query,
                 memory_context=memory_context,
                 evidence=evidence,
-                steering=steering,
-                suggested_tool=classification.suggested_tool
+                steering=steering
             )
 
             if action.action_type == "respond":
@@ -447,14 +280,13 @@ Write a clear, well-organized response that helps the user understand findings a
         query: str,
         memory_context: str,
         evidence: List[Dict],
-        steering: SteeringDirectives,
-        suggested_tool: Optional[str] = None
+        steering: SteeringDirectives
     ) -> AgentAction:
         """
         Use LLM to decide next action: call a tool or respond.
 
-        Args:
-            suggested_tool: Optional hint from classifier for recommended tool
+        V7.2: The LLM uses guidance in the system prompt to decide what tools to call.
+        No suggested_tool hint - the prompt explains when to use each tool.
 
         Returns:
             AgentAction with either tool_call or respond decision
@@ -468,17 +300,8 @@ Write a clear, well-organized response that helps the user understand findings a
         # Format evidence for context
         evidence_str = self._format_evidence_for_context(evidence)
 
-        # Add suggested tool hint if present
-        tool_hint = ""
-        if suggested_tool and not evidence:
-            tool_hint = f"""
-**RECOMMENDED TOOL**: {suggested_tool}
-The query classification suggests using {suggested_tool} - this tool directly provides
-the statistics being asked about (question counts, word counts, utterance counts, etc.)
-"""
-
         user_message = f"""Query: {query}
-{tool_hint}
+
 Evidence gathered so far:
 {evidence_str if evidence_str else "None yet"}
 
