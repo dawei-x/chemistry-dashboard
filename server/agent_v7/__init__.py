@@ -1,73 +1,62 @@
 """
-BLINC Agent V7 - Scaffolding Agent
+BLINC Agent V7.2 - Pure ReAct Scaffolding Agent
 
-A simplified, flexible agent architecture based on ReAct pattern with:
-- Query classification for exploratory vs targeted queries
-- Systematic multi-session retrieval for cross-session queries
+A simplified agent architecture based on pure ReAct pattern:
+- LLM decides what tools to call (no hardcoded routing)
+- Tool guidance in system prompt for different query types
 - Conversation memory for multi-turn context
 - Scaffolded responses that point to specific evidence
-- LLM-driven tool selection for targeted queries
-- User steering compliance
+- Artifact steering (user controls which tools to use)
 
-Architecture:
-- Query Classifier: Detects exploratory (cross-session) vs targeted (single-session) queries
-- Exploratory Retriever: Systematic retrieval across multiple sessions
-- ReAct loop: Flexible tool selection for targeted queries
-- ConversationMemory: Context persistence across turns
-- Scaffolding prompts: Evidence-rich responses
+Architecture (V7.2):
+- react_agent.py: Core ReAct loop - LLM decides tools
+- prompts_v2.py: System prompt with tool selection guidance
+- memory.py: Conversation context persistence
+- tools_v2.py: Tool interface (wraps artifact_tools.py)
+- steering.py: Extract and validate user steering preferences
+- graph_v2.py: LangGraph wrapper for agent invocation
+- routes_v2.py: Flask API endpoints
 
-Key features:
-1. Cross-session queries get systematic multi-session retrieval
-2. Targeted queries use flexible ReAct loop
-3. Points users to specific artifacts with explanations
-4. Maintains context across conversation turns
+Key files:
+- react_agent.py: Main agent logic
+- tools_v2.py: Tool definitions and execution
+- tools/artifact_tools.py: Database queries (implementations)
+- prompts_v2.py: LLM prompts and guidance
+- memory.py: Conversation memory
+
+Deprecated files (renamed with _deprecated suffix):
+- classifier_deprecated.py: Was used for query routing (V7.1)
+- exploratory_deprecated.py: Was used for cross-session retrieval (V7.1)
+- graph_deprecated.py: Old LangGraph implementation
+- routes_deprecated.py: Old Flask routes
+- state_deprecated.py: Old state management
+
+Handler: V7_PURE_REACT
 """
 
-# Core agent components
+# Core agent components (V7.2)
 from .react_agent import ScaffoldingAgent, run_agent, AgentResponse
+
+# Memory management
 from .memory import ConversationMemory, get_memory, clear_memory
 
-# Query classification and exploratory retrieval (NEW)
-from .classifier import classify_query, QueryClassification, is_simple_discovery_query
-from .exploratory import (
-    retrieve_exploratory,
-    ExploratoryResult,
-    ExploratoryEvidence,
-    format_exploratory_evidence_for_synthesis
-)
-
-# Graph and routes
+# Graph and routes (V7.2)
 from .graph_v2 import create_agent_graph, get_graph, invoke_agent, reset_conversation
 from .routes_v2 import agent_v7_bp
-
-# Legacy architecture (for comparison/fallback)
-from .graph import create_agent_graph as create_legacy_graph
-from .routes import agent_v7_bp as legacy_agent_v7_bp
 
 __all__ = [
     # Core agent
     'ScaffoldingAgent',
     'run_agent',
     'AgentResponse',
+    # Memory
     'ConversationMemory',
     'get_memory',
     'clear_memory',
-    # Query classification (NEW)
-    'classify_query',
-    'QueryClassification',
-    'is_simple_discovery_query',
-    # Exploratory retrieval (NEW)
-    'retrieve_exploratory',
-    'ExploratoryResult',
-    'ExploratoryEvidence',
-    'format_exploratory_evidence_for_synthesis',
     # Graph/routes
     'create_agent_graph',
     'get_graph',
     'invoke_agent',
     'reset_conversation',
     'agent_v7_bp',
-    # Legacy (prefixed)
-    'create_legacy_graph',
-    'legacy_agent_v7_bp',
 ]
