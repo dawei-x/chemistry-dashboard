@@ -1,0 +1,251 @@
+{
+  "timestamp": "2026-01-17T03:09:08.507539",
+  "summary": {
+    "total": 20,
+    "answered": 20,
+    "accurate": 20,
+    "scaffolded": 13,
+    "tools_ok": 11
+  },
+  "issues": [
+    {
+      "id": "basic_02",
+      "issue": "Expected tools ['get_session_overview'], used ['get_transcript', 'get_concept_map']"
+    },
+    {
+      "id": "speaker_02",
+      "issue": "Expected tools ['get_session_overview'], used ['get_transcript']"
+    },
+    {
+      "id": "compare_01",
+      "issue": "Expected tools ['compare_sessions', 'get_session_overview'], used ['get_transcript', 'get_transcript', 'get_transcript', 'get_transcript', 'get_transcript']"
+    },
+    {
+      "id": "edge_01",
+      "issue": "Expected tools ['get_session_overview'], used ['get_transcript', 'get_concept_map', 'get_7c_analysis', 'list_sessions']"
+    }
+  ],
+  "results": [
+    {
+      "id": "basic_01",
+      "query": "What sessions are available?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "list_sessions"
+      ],
+      "issues": []
+    },
+    {
+      "id": "basic_02",
+      "query": "Tell me about session 19",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_concept_map"
+      ],
+      "issues": [
+        "Expected tools ['get_session_overview'], used ['get_transcript', 'get_concept_map']"
+      ]
+    },
+    {
+      "id": "basic_03",
+      "query": "What was the Nuclear Fusion discussion about?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_concept_map"
+      ],
+      "issues": []
+    },
+    {
+      "id": "speaker_01",
+      "query": "What did Tucker say in session 19?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "speaker_02",
+      "query": "Who were the main speakers in the Country Music discussion?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": [
+        "Expected tools ['get_session_overview'], used ['get_transcript']"
+      ]
+    },
+    {
+      "id": "7c_01",
+      "query": "How was the collaboration in the Living in NYC discussion?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_7c_analysis"
+      ],
+      "issues": []
+    },
+    {
+      "id": "7c_02",
+      "query": "What evidence shows the Nuclear Fusion discussion had good context awareness?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_7c_analysis"
+      ],
+      "issues": []
+    },
+    {
+      "id": "concept_01",
+      "query": "What concepts were discussed in session 20?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_concept_map"
+      ],
+      "issues": []
+    },
+    {
+      "id": "compare_01",
+      "query": "Compare sessions 19 and 20",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_transcript",
+        "get_transcript",
+        "get_transcript",
+        "get_transcript"
+      ],
+      "issues": [
+        "Expected tools ['compare_sessions', 'get_session_overview'], used ['get_transcript', 'get_transcript', 'get_transcript', 'get_transcript', 'get_transcript']"
+      ]
+    },
+    {
+      "id": "hypothesis_01",
+      "query": "I think Nuclear Fusion had better collaboration than the AI discussion. Is that true?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_7c_analysis"
+      ],
+      "issues": []
+    },
+    {
+      "id": "scaffold_01",
+      "query": "Give me specific quotes from the AI discussion about consciousness",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "search_01",
+      "query": "Find discussions about energy",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "search_sessions",
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "steer_01",
+      "query": "Focus on the transcript only - tell me about session 20",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "steer_02",
+      "query": "Don't use 7C analysis, just tell me what people said in session 19",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "edge_01",
+      "query": "Tell me about session 999",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_concept_map",
+        "get_7c_analysis",
+        "list_sessions"
+      ],
+      "issues": [
+        "Expected tools ['get_session_overview'], used ['get_transcript', 'get_concept_map', 'get_7c_analysis', 'list_sessions']"
+      ]
+    },
+    {
+      "id": "multi_01_turn1",
+      "query": "Tell me about session 20",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript",
+        "get_concept_map"
+      ],
+      "issues": []
+    },
+    {
+      "id": "multi_01_turn2",
+      "query": "Who were the speakers?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "multi_01_turn3",
+      "query": "What was the collaboration quality?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_7c_analysis"
+      ],
+      "issues": []
+    },
+    {
+      "id": "multi_02_turn1",
+      "query": "What did Tucker say in session 19?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_transcript"
+      ],
+      "issues": []
+    },
+    {
+      "id": "multi_02_turn2",
+      "query": "What about Sam?",
+      "answered": true,
+      "accurate": true,
+      "tools_used": [
+        "get_speaker_profile",
+        "get_transcript"
+      ],
+      "issues": []
+    }
+  ]
+}

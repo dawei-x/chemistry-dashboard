@@ -52,12 +52,15 @@ def _get_rag_service():
 
 def list_sessions() -> Dict[str, Any]:
     """
-    List all available sessions with metadata.
+    List all available sessions with metadata and collaboration scores.
 
     Use this FIRST to understand what data is available before retrieving artifacts.
+    For superlative queries (best/worst collaboration), use the collaboration_score
+    to identify top candidates, then call get_7c_analysis for detailed breakdown.
 
     Returns:
-        All sessions with: id, name, speakers, discourse_type, artifacts_available
+        All sessions with: id, name, speakers, discourse_type, artifacts_available,
+        and collaboration_score (overall 7C average, 0-100)
     """
     logger.info("Listing all sessions")
 
@@ -65,11 +68,15 @@ def list_sessions() -> Dict[str, Any]:
         connection = _get_db_connection()
         cursor = connection.cursor(dictionary=True)
 
+        # Use subqueries to avoid duplicates from LEFT JOINs when multiple
+        # concept_session or seven_cs_analysis records exist per session_device
         cursor.execute("""
             SELECT
                 sd.id as session_id,
-                COALESCE(s.name, sd.name) as session_name,
-                cs.discourse_type,
+                sd.name as device_name,
+                s.name as session_name,
+                (SELECT cs.discourse_type FROM concept_session cs
+                 WHERE cs.session_device_id = sd.id LIMIT 1) as discourse_type,
                 (SELECT GROUP_CONCAT(DISTINCT sp.alias)
                  FROM transcript t
                  JOIN speaker sp ON t.speaker_id = sp.id
@@ -78,28 +85,37 @@ def list_sessions() -> Dict[str, Any]:
                 (SELECT COUNT(*) FROM concept_node cn
                  JOIN concept_session ccs ON cn.concept_session_id = ccs.id
                  WHERE ccs.session_device_id = sd.id) as concept_count,
-                (SELECT COUNT(*) FROM seven_cs_analysis WHERE session_device_id = sd.id) as has_7c
+                (SELECT sca.analysis_summary FROM seven_cs_analysis sca
+                 WHERE sca.session_device_id = sd.id ORDER BY sca.id DESC LIMIT 1) as seven_c_json
             FROM session_device sd
             JOIN session s ON s.id = sd.session_id
-            LEFT JOIN concept_session cs ON cs.session_device_id = sd.id
             ORDER BY sd.id
         """)
 
         sessions = []
         for row in cursor.fetchall():
+            # Calculate overall collaboration score from 7C JSON
+            collaboration_score = None
+            if row['seven_c_json']:
+                try:
+                    import json
+                    seven_c = json.loads(row['seven_c_json']) if isinstance(row['seven_c_json'], str) else row['seven_c_json']
+                    scores = []
+                    for dim in ['climate', 'communication', 'contribution', 'conflict', 'context', 'constructive', 'compatibility']:
+                        if dim in seven_c and 'score' in seven_c[dim]:
+                            scores.append(seven_c[dim]['score'])
+                    if scores:
+                        collaboration_score = round(sum(scores) / len(scores), 1)
+                except Exception as e:
+                    logger.warning(f"Failed to parse 7C JSON for session {row['session_id']}: {e}")
+
             sessions.append({
                 "session_id": row['session_id'],
+                "device_name": row['device_name'],
                 "session_name": row['session_name'],
                 "discourse_type": row['discourse_type'],
                 "speakers": row['speakers'].split(',') if row['speakers'] else [],
-                "transcript_count": row['transcript_count'] or 0,
-                "concept_count": row['concept_count'] or 0,
-                "has_collaboration_analysis": bool(row['has_7c']),
-                "artifacts_available": {
-                    "transcript": row['transcript_count'] > 0,
-                    "concept_map": row['concept_count'] > 0,
-                    "collaboration": bool(row['has_7c'])
-                }
+                "collaboration_score": collaboration_score
             })
 
         cursor.close()
@@ -124,86 +140,188 @@ def list_sessions() -> Dict[str, Any]:
 
 def search_for_sessions(
     query: str,
-    top_k: int = 5,
-    min_score: float = 0.10,
-    min_relative_score: float = 0.70
+    top_k: int = 10,  # Increased from 5 for better recall
+    min_score: float = 0.20,  # Absolute minimum similarity (full queries score higher than topic keywords)
+    min_relative_score: float = 0.60  # Relative threshold to reduce false positives
 ) -> Dict[str, Any]:
     """
-    Find sessions relevant to a query using semantic search.
+    Find sessions relevant to a query using multi-collection semantic search with RRF fusion.
+
+    Searches across THREE collections for comprehensive discovery:
+    - transcript_collection: Content/topic matches (what was discussed)
+    - seven_c_collection: Collaboration quality matches (how they discussed)
+    - concept_collection: Structural matches (ideas and relationships)
+
+    Uses Reciprocal Rank Fusion (RRF) to combine rankings from all collections,
+    ensuring sessions that are relevant across multiple dimensions rank higher.
 
     Use to DISCOVER which sessions are relevant, then use get_artifacts() to retrieve.
 
     Args:
         query: What to search for
-        top_k: Maximum sessions to return (can return fewer if not relevant enough)
-        min_score: Minimum absolute similarity score (0-1). Default 0.10.
-        min_relative_score: Minimum score relative to best match. Default 0.70 means
-                           sessions must score at least 70% of the best match.
-                           This filters out tangentially related sessions.
+        top_k: Maximum sessions to return (default 10)
+        min_score: Minimum absolute RRF score. Default 0.20.
+        min_relative_score: Minimum score relative to best match. Default 0.60 means
+                           sessions must score at least 60% of the best match.
+                           Balances recall with precision to avoid false positives.
 
     Returns:
-        Ranked list of relevant session IDs with match reasons
+        Ranked list of relevant session IDs with match reasons and collection contributions
     """
-    logger.info(f"Searching for sessions matching: '{query}'")
+    logger.info(f"[Multi-Collection Search] Query: '{query}'")
 
     try:
         rag = _get_rag_service()
 
-        # Search across transcript collection
-        results = rag.transcript_collection.query(
-            query_texts=[query],
-            n_results=top_k * 3  # Get more to dedupe by session and filter
-        )
+        # =========================================================================
+        # STEP 1: Query all three collections
+        # =========================================================================
+        results_per_collection = top_k * 3  # Get more results per collection for better fusion
 
-        # Aggregate by session
-        session_scores = {}
-        if results and results.get('documents'):
-            for i, doc in enumerate(results['documents'][0]):
-                meta = results['metadatas'][0][i] if results.get('metadatas') else {}
-                dist = results['distances'][0][i] if results.get('distances') else 1
+        results_by_collection = {}
+
+        # Search transcript collection (what was said)
+        try:
+            transcript_results = rag.transcript_collection.query(
+                query_texts=[query],
+                n_results=results_per_collection
+            )
+            results_by_collection['transcript'] = transcript_results
+            logger.info(f"  [transcript] Found {len(transcript_results.get('documents', [[]])[0])} results")
+        except Exception as e:
+            logger.warning(f"  [transcript] Search failed: {e}")
+            results_by_collection['transcript'] = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+        # Search 7C collection (collaboration quality)
+        try:
+            seven_c_results = rag.seven_c_collection.query(
+                query_texts=[query],
+                n_results=results_per_collection
+            )
+            results_by_collection['seven_c'] = seven_c_results
+            logger.info(f"  [seven_c] Found {len(seven_c_results.get('documents', [[]])[0])} results")
+        except Exception as e:
+            logger.warning(f"  [seven_c] Search failed: {e}")
+            results_by_collection['seven_c'] = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+        # Search concept collection (idea structure)
+        try:
+            concept_results = rag.concept_collection.query(
+                query_texts=[query],
+                n_results=results_per_collection
+            )
+            results_by_collection['concept'] = concept_results
+            logger.info(f"  [concept] Found {len(concept_results.get('documents', [[]])[0])} results")
+        except Exception as e:
+            logger.warning(f"  [concept] Search failed: {e}")
+            results_by_collection['concept'] = {'documents': [[]], 'metadatas': [[]], 'distances': [[]]}
+
+        # =========================================================================
+        # STEP 2: Reciprocal Rank Fusion (RRF)
+        # =========================================================================
+        k = 60  # Standard RRF constant
+        session_rrf_scores = {}  # session_id -> RRF score
+        session_metadata = {}    # session_id -> best metadata
+        session_collections = {}  # session_id -> which collections matched
+        session_previews = {}    # session_id -> best preview snippet
+
+        for collection_name, results in results_by_collection.items():
+            docs = results.get('documents', [[]])[0]
+            metas = results.get('metadatas', [[]])[0]
+            dists = results.get('distances', [[]])[0]
+
+            for rank, (doc, meta, dist) in enumerate(zip(docs, metas, dists)):
                 sid = meta.get('session_device_id')
-                score = 1 - dist
+                if not sid:
+                    continue
 
-                if sid and score >= min_score:
-                    if sid not in session_scores:
-                        session_scores[sid] = {
-                            "session_id": sid,
-                            "session_name": meta.get('session_name', f"Session {sid}"),
-                            "best_match_score": score,
-                            "match_preview": doc[:200]
-                        }
-                    else:
-                        session_scores[sid]["best_match_score"] = max(
-                            session_scores[sid]["best_match_score"],
-                            score
-                        )
+                similarity = 1 - dist  # Convert distance to similarity
 
-        # Sort by score
+                # Skip very low similarity results
+                if similarity < 0.15:
+                    continue
+
+                # RRF score contribution: 1/(k + rank + 1)
+                rrf_contribution = 1.0 / (k + rank + 1)
+
+                if sid not in session_rrf_scores:
+                    session_rrf_scores[sid] = 0.0
+                    session_collections[sid] = []
+                    session_previews[sid] = ""
+
+                session_rrf_scores[sid] += rrf_contribution
+
+                # Track which collections contributed
+                if collection_name not in session_collections[sid]:
+                    session_collections[sid].append(collection_name)
+
+                # Keep best metadata (prefer transcript metadata as it has more info)
+                if sid not in session_metadata or collection_name == 'transcript':
+                    session_metadata[sid] = meta
+
+                # Keep best preview (prefer transcript content)
+                if collection_name == 'transcript' and doc:
+                    session_previews[sid] = doc[:200]
+
+        # =========================================================================
+        # STEP 3: Build ranked session list
+        # =========================================================================
+        session_scores = {}
+        for sid, rrf_score in session_rrf_scores.items():
+            meta = session_metadata.get(sid, {})
+            speakers_str = meta.get('speakers', '')
+            speakers = speakers_str.split(',') if speakers_str else []
+
+            session_scores[sid] = {
+                "session_id": sid,
+                "session_name": meta.get('session_name', f"Session {sid}"),
+                "device_name": meta.get('device_name'),
+                "speakers": speakers,
+                "best_match_score": round(rrf_score, 4),  # RRF score for backward compatibility
+                "collections_matched": session_collections.get(sid, []),
+                "match_preview": session_previews.get(sid, "")
+            }
+
+        # Sort by RRF score
         sorted_sessions = sorted(session_scores.values(), key=lambda x: x['best_match_score'], reverse=True)
 
-        # Smart filtering: apply relative threshold based on best score
-        # This ensures we don't include sessions that are much less relevant than the top match
+        # =========================================================================
+        # STEP 4: Smart filtering with relative threshold
+        # =========================================================================
         if sorted_sessions:
             best_score = sorted_sessions[0]['best_match_score']
+            # Scale min_score to RRF range (RRF scores are typically 0.01-0.05)
+            rrf_min_score = min_score * 0.05  # Scale down since RRF scores are much smaller
             relative_threshold = best_score * min_relative_score
 
             ranked = []
             for s in sorted_sessions[:top_k]:
-                if s['best_match_score'] >= relative_threshold:
+                if s['best_match_score'] >= relative_threshold and s['best_match_score'] >= rrf_min_score:
                     ranked.append(s)
                 else:
-                    logger.info(f"  [Search] Excluded session {s['session_id']} (score {s['best_match_score']:.2f} < relative threshold {relative_threshold:.2f})")
+                    logger.info(f"  [Search] Excluded session {s['session_id']} "
+                               f"(score {s['best_match_score']:.4f} < threshold {max(relative_threshold, rrf_min_score):.4f})")
         else:
             ranked = []
 
-        # Build response
+        # Log collection coverage for debugging
+        if ranked:
+            multi_collection_count = sum(1 for s in ranked if len(s.get('collections_matched', [])) > 1)
+            logger.info(f"[Multi-Collection Search] {len(ranked)} sessions found, "
+                       f"{multi_collection_count} matched in multiple collections")
+
+        # =========================================================================
+        # STEP 5: Build response
+        # =========================================================================
         response = {
             "tool_name": "search_for_sessions",
             "query": query,
             "sessions_found": len(ranked),
             "sessions": ranked,
             "is_relevant": len(ranked) > 0,
-            "result_count": len(ranked)
+            "result_count": len(ranked),
+            "search_type": "multi_collection_rrf",
+            "collections_searched": ["transcript", "seven_c", "concept"]
         }
 
         if ranked:
@@ -437,7 +555,8 @@ def get_artifacts(
         cursor.execute("""
             SELECT
                 sd.id as session_id,
-                COALESCE(s.name, sd.name) as session_name,
+                sd.name as device_name,
+                s.name as session_name,
                 cs.discourse_type
             FROM session_device sd
             JOIN session s ON s.id = sd.session_id
@@ -456,6 +575,7 @@ def get_artifacts(
                 "is_relevant": False
             }
 
+        result["device_name"] = session_meta['device_name']
         result["session_name"] = session_meta['session_name']
         result["discourse_type"] = session_meta['discourse_type']
 
@@ -1024,13 +1144,13 @@ def get_speaker_profile(
         connection = _get_db_connection()
         cursor = connection.cursor(dictionary=True)
 
-        # Find speaker
+        # Find ALL speaker records with this alias (same person may have multiple IDs)
         cursor.execute("""
-            SELECT id, alias FROM speaker WHERE alias LIKE %s LIMIT 1
+            SELECT id, alias FROM speaker WHERE alias LIKE %s
         """, (f"%{speaker_name}%",))
-        speaker = cursor.fetchone()
+        speakers = cursor.fetchall()
 
-        if not speaker:
+        if not speakers:
             cursor.close()
             connection.close()
             return {
@@ -1039,12 +1159,14 @@ def get_speaker_profile(
                 "is_relevant": False
             }
 
-        speaker_id = speaker['id']
-        speaker_alias = speaker['alias']
+        # Get all speaker IDs (same person may have multiple records across sessions)
+        speaker_ids = [s['id'] for s in speakers]
+        speaker_alias = speakers[0]['alias']  # Use first alias as canonical name
 
         session_filter = f"AND t.session_device_id = {session_id}" if session_id else ""
+        speaker_id_list = ', '.join(str(sid) for sid in speaker_ids)
 
-        # Transcript data
+        # Transcript data with session-relative comparison (query all speaker IDs)
         cursor.execute(f"""
             SELECT
                 t.session_device_id,
@@ -1053,16 +1175,34 @@ def get_speaker_profile(
                 SUM(t.word_count) as word_count,
                 SUM(CASE WHEN t.question = 1 THEN 1 ELSE 0 END) as questions,
                 AVG(t.analytic_thinking_value) as avg_analytic,
-                AVG(t.certainty_value) as avg_certainty
+                AVG(t.certainty_value) as avg_certainty,
+                -- Session totals for comparison
+                (SELECT COUNT(*) FROM transcript t2 WHERE t2.session_device_id = t.session_device_id) as session_total_utterances,
+                (SELECT COUNT(DISTINCT t2.speaker_id) FROM transcript t2 WHERE t2.session_device_id = t.session_device_id) as session_speaker_count
             FROM transcript t
             JOIN session_device sd ON t.session_device_id = sd.id
             JOIN session s ON sd.session_id = s.id
-            WHERE t.speaker_id = %s {session_filter}
+            WHERE t.speaker_id IN ({speaker_id_list}) {session_filter}
             GROUP BY t.session_device_id, s.name, sd.name
-        """, (speaker_id,))
+        """)
         transcript_data = cursor.fetchall()
 
-        # Sample quotes
+        # Calculate comparative metrics for each session (raw data, not interpreted)
+        # The LLM should reason about what these patterns mean
+        for row in transcript_data:
+            # Convert Decimal to int/float for calculations (MySQL returns Decimal types)
+            session_total = int(row.get('session_total_utterances') or 1)
+            speaker_count = int(row.get('session_speaker_count') or 1)
+            utterances = int(row.get('utterance_count') or 0)
+            questions = int(row.get('questions') or 0)
+
+            # Comparative metrics (let LLM interpret what they mean)
+            row['participation_share_pct'] = round(utterances * 100.0 / session_total, 1) if session_total > 0 else 0
+            row['question_rate_pct'] = round(questions * 100.0 / utterances, 1) if utterances > 0 else 0
+            row['session_speaker_count'] = speaker_count
+            row['expected_equal_share_pct'] = round(100.0 / speaker_count, 1) if speaker_count > 0 else 100.0
+
+        # Sample quotes (from all speaker IDs with this alias)
         cursor.execute(f"""
             SELECT
                 t.transcript as text,
@@ -1073,14 +1213,14 @@ def get_speaker_profile(
                 t.certainty_value,
                 t.question as is_question
             FROM transcript t
-            WHERE t.speaker_id = %s {session_filter}
+            WHERE t.speaker_id IN ({speaker_id_list}) {session_filter}
             AND t.word_count > 15
             ORDER BY t.word_count DESC
             LIMIT 5
-        """, (speaker_id,))
+        """)
         sample_quotes = cursor.fetchall()
 
-        # Concept data
+        # Concept data (from all speaker IDs with this alias)
         session_concept_filter = f"AND cs.session_device_id = {session_id}" if session_id else ""
         cursor.execute(f"""
             SELECT
@@ -1090,8 +1230,8 @@ def get_speaker_profile(
                 cs.session_device_id
             FROM concept_node cn
             JOIN concept_session cs ON cn.concept_session_id = cs.id
-            WHERE cn.speaker_id = %s {session_concept_filter}
-        """, (speaker_id,))
+            WHERE cn.speaker_id IN ({speaker_id_list}) {session_concept_filter}
+        """)
         concept_nodes = cursor.fetchall()
 
         # Get concept edges (connections)
@@ -1166,7 +1306,7 @@ def get_speaker_profile(
         return {
             "tool_name": "get_speaker_profile",
             "speaker_alias": speaker_alias,
-            "speaker_id": speaker_id,
+            "speaker_ids": speaker_ids,  # May have multiple IDs if same person across sessions
             "session_scope": session_id if session_id else "all sessions",
 
             "transcript_summary": {
@@ -1174,9 +1314,14 @@ def get_speaker_profile(
                 "participation_by_session": [{
                     "session_id": d['session_device_id'],
                     "session_name": d['session_name'],
-                    "utterances": d['utterance_count'],
-                    "words": d['word_count'] or 0,
-                    "questions_asked": d['questions'] or 0,
+                    "utterances": int(d['utterance_count'] or 0),
+                    "words": int(d['word_count'] or 0),
+                    "questions_asked": int(d['questions'] or 0),
+                    # Comparative metrics for LLM to reason about
+                    "question_rate_pct": d.get('question_rate_pct', 0),
+                    "participation_share_pct": d.get('participation_share_pct', 0),
+                    "session_speaker_count": d.get('session_speaker_count', 1),
+                    "expected_equal_share_pct": d.get('expected_equal_share_pct', 100),
                     "avg_analytic_thinking": round(float(d['avg_analytic'] or 0), 1),
                     "avg_certainty": round(float(d['avg_certainty'] or 0), 1)
                 } for d in transcript_data],

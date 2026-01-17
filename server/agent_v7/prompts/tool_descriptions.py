@@ -259,12 +259,16 @@ WHEN TO USE:
 - "How did [Name] participate?"
 - "What did [Name] contribute?"
 - "Who did [Name] interact with?"
+- "How many questions did [Name] ask?" (returns question count directly)
+- "Describe [Name]'s speaking style" (returns analytic thinking, certainty scores)
 - Understanding a speaker's ideas and how they connect to others
 
-PREFER THIS OVER deprecated tools (analyze_speaker, get_speaker_artifacts)
+PREFER THIS OVER:
+- deprecated tools (analyze_speaker, get_speaker_artifacts)
+- search_transcripts when you need STATISTICS about a speaker (not specific quotes)
 
 RETURNS:
-- Transcript summary: utterances, questions, analytic/certainty scores, sample quotes
+- Transcript summary: utterance_count, word_count, **questions** (count), analytic/certainty scores, sample quotes
 - Concept summary: concepts contributed by type, with GRAPH CONNECTIONS
   - Outgoing: ideas this speaker influenced
   - Incoming: ideas that influenced this speaker

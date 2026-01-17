@@ -92,7 +92,7 @@ from agent_v3.baseline import baseline_bp  # Baseline agent for AIED 2026
 from agent_v4.routes import agent_v4_bp  # High-agency agent for AIED 2026
 from agent_v5.routes import agent_v5_bp  # Context-first agentic for AIED 2026
 from agent_v6.routes import agent_v6_bp  # Definitive architecture for AIED 2026
-from agent_v7.routes import agent_v7_bp  # Full context agent - no truncation limits
+from agent_v7.routes_v2 import agent_v7_bp  # Simplified 5-tool architecture
 
 # Register LLM routes
 app.register_blueprint(llm_bp)

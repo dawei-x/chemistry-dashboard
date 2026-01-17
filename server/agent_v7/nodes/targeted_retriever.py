@@ -20,6 +20,7 @@ from ..llm import get_reasoning_client, get_fast_client
 from ..tools import ALL_TOOLS, COMBINED_TOOLS
 from ..tools.artifact_tools import search_for_sessions
 from ..state import SubGoalResult
+from ..memory import get_session_name_mapping
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +50,7 @@ def clear_pras_cache(conversation_id: str = None) -> int:
         _pras_cache = {}
         return count
 
-# Session name to ID mapping (shared with execute_tool)
-SESSION_NAME_TO_ID = {
-    'living in nyc': 18, 'nyc': 18, 'new york': 18,
-    'is ai alive': 19, 'ai alive': 19, 'ai': 19,
-    'nuclear fusion': 20, 'fusion': 20,
-    'shaw interview': 21, 'shaw': 21,
-    'collaboration literacy': 22, 'literacy': 22,
-    'dinosaurs': 23, 'dinosaur': 23,
-    'country music': 24, 'country': 24, 'music': 24,
-    'abundance': 25
-}
+# Session name resolution now uses dynamic database lookup via get_session_name_mapping()
 
 
 def _fetch_artifact_parallel(tool_name: str, session_id: int) -> Tuple[str, int, Any]:
@@ -436,7 +427,10 @@ def _normalize_params(params: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _normalize_session_id(value):
-    """Convert session name to ID if needed."""
+    """Convert session name to ID if needed.
+
+    Uses dynamic session name mapping from database.
+    """
     if isinstance(value, int):
         return value
     if isinstance(value, str):
@@ -444,12 +438,21 @@ def _normalize_session_id(value):
             return int(value)
         except ValueError:
             pass
+
+        # Use dynamic mapping from database
         normalized = value.lower().strip()
-        if normalized in SESSION_NAME_TO_ID:
-            return SESSION_NAME_TO_ID[normalized]
-        for name, sid in SESSION_NAME_TO_ID.items():
+        session_mapping = get_session_name_mapping()
+
+        # First pass: exact match
+        for name, sid in session_mapping:
+            if name == normalized:
+                return sid
+
+        # Second pass: substring match (normalized contains name OR name contains normalized)
+        for name, sid in session_mapping:
             if name in normalized or normalized in name:
                 return sid
+
     return value
 
 

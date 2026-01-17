@@ -482,14 +482,32 @@ class SessionSerializer:
         These are stored alongside the embedding for efficient filtering.
         """
         from tables.session_device import SessionDevice
+        from tables.session import Session
 
-        # Get session_id from SessionDevice
+        # Get session_device and related session
         session_device = SessionDevice.query.get(session_device_id)
         session_id = session_device.session_id if session_device else None
+        session = Session.query.get(session_id) if session_id else None
+
+        # Get session and device names
+        session_name = session.name if session else None
+        device_name = session_device.name if session_device else None
+
+        # Get speaker names from transcripts (use speaker_tag directly)
+        speaker_names = []
+        if transcripts:
+            speaker_tags = set()
+            for t in transcripts:
+                if t.speaker_tag:
+                    speaker_tags.add(t.speaker_tag)
+            speaker_names = sorted(list(speaker_tags))[:10]  # Limit to 10 speakers
 
         metrics = {
             "session_device_id": session_device_id,
-            "session_id": session_id,  # Added for routing to pod details
+            "session_id": session_id,
+            "session_name": session_name,
+            "device_name": device_name,
+            "speakers": ",".join(speaker_names) if speaker_names else None,
             "indexed_at": datetime.utcnow().isoformat(),
             "has_concept_map": concept_session is not None and concept_session.generation_status == 'completed',
             "has_seven_cs": seven_cs is not None,

@@ -125,7 +125,7 @@ def list_sessions() -> Dict[str, Any]:
 def search_for_sessions(
     query: str,
     top_k: int = 3,
-    min_score: float = 0.15
+    min_score: float = 0.25
 ) -> Dict[str, Any]:
     """
     Find sessions relevant to a query using semantic search.
@@ -135,8 +135,8 @@ def search_for_sessions(
     Args:
         query: What to search for
         top_k: Number of sessions to return
-        min_score: Minimum similarity score (0-1) to include results. Default 0.15.
-                   Set to 0 to return all results regardless of relevance.
+        min_score: Minimum similarity score (0-1) to include results. Default 0.25.
+                   Raised to reduce false positives. Set to 0 to return all results.
 
     Returns:
         Ranked list of relevant session IDs with match reasons
@@ -163,9 +163,15 @@ def search_for_sessions(
 
                 if sid and score >= min_score:
                     if sid not in session_scores:
+                        # Parse speakers from comma-separated string
+                        speakers_str = meta.get('speakers', '')
+                        speakers = speakers_str.split(',') if speakers_str else []
+
                         session_scores[sid] = {
                             "session_id": sid,
                             "session_name": meta.get('session_name', f"Session {sid}"),
+                            "device_name": meta.get('device_name'),
+                            "speakers": speakers,
                             "best_match_score": score,
                             "match_preview": doc[:200]
                         }

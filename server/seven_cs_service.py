@@ -153,12 +153,27 @@ def analyze_session_seven_cs(session_device_id):
     try:
         start_time = time.time()
 
-        # Create analysis entry
-        analysis = SevenCsAnalysis(
-            session_device_id=session_device_id,
-            analysis_status='processing'
-        )
-        db.session.add(analysis)
+        # Check for existing analysis - update instead of creating duplicate
+        existing = SevenCsAnalysis.query.filter_by(
+            session_device_id=session_device_id
+        ).first()
+
+        if existing:
+            logging.info(f"Found existing 7C analysis (id={existing.id}) for session_device {session_device_id}, will replace")
+            # Delete old coded segments before re-analysis
+            from tables.seven_cs_coded_segment import SevenCsCodedSegment
+            SevenCsCodedSegment.query.filter_by(analysis_id=existing.id).delete()
+            analysis = existing
+            analysis.analysis_status = 'processing'
+            analysis.analysis_summary = {}
+        else:
+            # Create new analysis entry
+            analysis = SevenCsAnalysis(
+                session_device_id=session_device_id,
+                analysis_status='processing'
+            )
+            db.session.add(analysis)
+
         db.session.commit()
 
         # Get all transcripts for the session

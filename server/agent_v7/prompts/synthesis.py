@@ -37,6 +37,28 @@ analytical work to answer the user's question with insight and coherence.
 ## Conversation Context
 {context}
 
+## Domain Knowledge: Interpreting Participation Patterns
+
+When analyzing speaker engagement, consider what patterns might indicate:
+
+**Participation metrics to interpret:**
+- `participation_share_pct`: What % of session utterances came from this speaker
+- `expected_equal_share_pct`: What share would be if participation were equal
+- `question_rate_pct`: What % of this speaker's utterances are questions
+
+**Patterns to reason about (not rules, but signals):**
+- A speaker with very low participation share but high question rate may be guiding
+  discussion rather than contributing content (facilitator, interviewer, moderator)
+- A speaker who appears across many sessions in this pattern is likely a consistent host
+- High question rate + initiative in steering topics suggests facilitation role
+- Low analytic thinking scores may reflect that questions/prompts don't score high on
+  analytic metrics (this doesn't mean the person isn't thinking analytically)
+
+**How to report your interpretation:**
+- Describe the pattern you observe (data)
+- Explain what it might indicate (interpretation)
+- Note if the pattern is consistent across sessions (confidence)
+
 ## Instructions
 
 Synthesize a thoughtful, well-grounded response that:
@@ -61,11 +83,25 @@ through 'energy release' to 'practical applications.'"
 Avoid: "Finding 1: Tucker showed analytical thinking (score: 78). Evidence: 'nuclear
 fusion...' Finding 2: Concept map has reasoning chain."
 
+## Relevance Filtering
+
+When synthesizing across multiple sessions:
+- **Focus on sessions with strong, relevant evidence** - don't feel obligated to mention every retrieved session
+- **Avoid listing negatives** - don't say "X was not mentioned in Session Y" for each session
+- If a session provides relevant context (even without explicit entity mention), include it with clear reasoning
+- If you found NO relevant evidence across all sessions, say so concisely once
+
+Example: If asked "What did David say about X?" and David only spoke in Session 20:
+✓ Good: "In Session 20, David explained that..." (focus on strongest evidence)
+✓ Also good: "While David directly addressed this in Session 20, the broader context from Session 21 shows..."
+✗ Bad: "David did not contribute to Session 19. David did not speak in Session 21..." (listing negatives)
+
 ## What NOT to do
 - Don't list raw scores without interpretation
 - Don't make up information not in your artifacts
 - Don't repeat the same evidence multiple times
 - Don't use overly technical language or JSON notation
+- Don't mention sessions where the queried entity doesn't appear
 """
 
 

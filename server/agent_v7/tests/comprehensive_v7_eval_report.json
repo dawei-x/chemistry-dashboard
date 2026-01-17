@@ -1,0 +1,283 @@
+{
+  "timestamp": "2026-01-17T03:26:31.063937",
+  "total_queries": 17,
+  "queries_with_issues": 7,
+  "queries_clean": 10,
+  "results": [
+    {
+      "query_id": "A1",
+      "query": "Did Tucker demonstrate systems thinking in session 19?",
+      "challenge": "Must operationalize 'systems thinking' into observable indicators",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "mentions 'Tucker'",
+          "passed": false
+        }
+      ],
+      "issues": [
+        "Missing expected term: 'Tucker'"
+      ]
+    },
+    {
+      "query_id": "A2",
+      "query": "How well did participants collaborate in session 20?",
+      "challenge": "Should use 7C analysis with specific dimension scores",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "mentions 'collaboration'",
+          "passed": false
+        },
+        {
+          "check": "uses 7C analysis",
+          "passed": false
+        }
+      ],
+      "issues": [
+        "Missing expected term: 'collaboration'",
+        "Should use 7C analysis but didn't"
+      ]
+    },
+    {
+      "query_id": "A3",
+      "query": "What evidence shows critical thinking in the Dinosaurs session?",
+      "challenge": "Must resolve session name AND operationalize 'critical thinking'",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "C1",
+      "query": "Which session has the best collaboration quality?",
+      "challenge": "Must compare ALL sessions, not just a subset",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "correct answer 'session 24'",
+          "passed": false
+        }
+      ],
+      "issues": [
+        "Expected 'session 24' but not found in answer"
+      ]
+    },
+    {
+      "query_id": "C2",
+      "query": "Compare the AI Alive and Nuclear Fusion sessions",
+      "challenge": "Must resolve session names and compare systematically",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "C3",
+      "query": "Which sessions discussed technology and its societal impact?",
+      "challenge": "Cross-session thematic search - should find multiple relevant sessions",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "G1",
+      "query": "How are ideas about fusion connected to energy in session 20?",
+      "challenge": "Should trace concept connections in the concept map",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "uses concept map",
+          "passed": false
+        }
+      ],
+      "issues": [
+        "Should use concept map but didn't"
+      ]
+    },
+    {
+      "query_id": "G2",
+      "query": "What's the connection between AI consciousness and ethics in session 19?",
+      "challenge": "Should trace concept paths in the concept map",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "uses concept map",
+          "passed": false
+        }
+      ],
+      "issues": [
+        "Should use concept map but didn't"
+      ]
+    },
+    {
+      "query_id": "S1",
+      "query": "What did David say about fusion in session 20?",
+      "challenge": "Should filter transcript by speaker",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "mentions speaker 'david'",
+          "passed": false
+        }
+      ],
+      "issues": []
+    },
+    {
+      "query_id": "S2",
+      "query": "Compare Tucker and David's contributions in session 19",
+      "challenge": "Should analyze both speakers' contributions",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "E1",
+      "query": "What sessions show hypothesis testing?",
+      "challenge": "Exploratory query - should NOT be constrained to single session",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "E2",
+      "query": "Find all discussions about energy across sessions",
+      "challenge": "Cross-session thematic search",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "EC1",
+      "query": "What's the worst collaboration?",
+      "challenge": "Superlative query (worst) - needs global comparison",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "EC2",
+      "query": "Session 99 overview",
+      "challenge": "Invalid session ID - should handle error gracefully",
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [
+        {
+          "check": "handles gracefully",
+          "passed": false
+        }
+      ],
+      "issues": []
+    },
+    {
+      "query_id": "M1_T1",
+      "query": "Tell me about the Nuclear Fusion session",
+      "turn": 1,
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": []
+    },
+    {
+      "query_id": "M1_T2",
+      "query": "Who were the speakers?",
+      "turn": 2,
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": [
+        "May have lost context from previous turns"
+      ]
+    },
+    {
+      "query_id": "M1_T3",
+      "query": "What did David specifically say about temperature?",
+      "turn": 3,
+      "response": {
+        "success": false,
+        "error": "The api_key client option must be set either by passing api_key to the client or by setting the OPENAI_API_KEY environment variable",
+        "answer": "",
+        "tools_used": []
+      },
+      "checks": [],
+      "issues": [
+        "May have lost context from previous turns"
+      ]
+    }
+  ]
+}
