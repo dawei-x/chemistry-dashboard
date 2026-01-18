@@ -146,7 +146,7 @@ def search_for_sessions(
     query: str,
     top_k: int = 10,  # Increased from 5 for better recall
     min_score: float = 0.20,  # Absolute minimum similarity (full queries score higher than topic keywords)
-    min_relative_score: float = 0.60  # Relative threshold to reduce false positives
+    min_relative_score: float = 0.65  # Relative threshold to reduce false positives
 ) -> Dict[str, Any]:
     """
     Find sessions relevant to a query using multi-collection semantic search with RRF fusion.

@@ -171,6 +171,7 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
         "display": "\n".join(lines),
         "session_count": len(sessions),
         "query": query,
+        "sessions": sessions,  # Include for auto-fetch
     }
 
 
@@ -263,6 +264,7 @@ def get_transcript(
         "session_id": session_id,
         "session_name": session_name,
         "utterance_count": len(utterances),
+        "utterances": utterances,  # Structured data for programmatic use
     }
 
 
@@ -394,6 +396,9 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
         "session_name": session_name,
         "node_count": len(nodes),
         "edge_count": len(edges),
+        "nodes": nodes,  # Structured data for programmatic use
+        "edges": edges,  # Structured data for programmatic use
+        "summary": summary,  # Structured data for programmatic use
     }
 
 
@@ -494,6 +499,7 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
         "session_id": session_id,
         "session_name": session_name,
         "overall_score": overall_score,
+        "dimensions": raw_dimensions,  # Structured data for programmatic use
     }
 
 

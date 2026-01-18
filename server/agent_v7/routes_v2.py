@@ -173,8 +173,12 @@ def query():
             session_device_id=session_focus
         )
 
-        # Extract tools used from tool_calls
+        # Extract tools used from tool_calls AND auto-fetched tools from evidence
         tools_used = [tc.get('name') for tc in result.get('tool_calls', [])]
+        # Also include auto-fetched tools from evidence
+        for e in result.get('evidence', []):
+            if e.get('auto_fetched') and e.get('tool'):
+                tools_used.append(e.get('tool'))
 
         # Format response (maintain API compatibility)
         response = {

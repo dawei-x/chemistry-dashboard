@@ -126,16 +126,119 @@ SPEAKER_PATTERNS = [
     r'who\s+(?:spoke|talked|contributed)\s+(?:the\s+)?(?:most|least)',
 ]
 
+# Patterns for speaker comparison queries (need profiles for BOTH speakers)
+SPEAKER_COMPARISON_PATTERNS = [
+    r'compare\s+(\w+)\s+(?:and|vs\.?|versus|with|to)\s+(\w+)',
+    r'(\w+)\s+(?:and|vs\.?)\s+(\w+)(?:\'s)?\s+(?:participation|contribution|style|pattern|engagement)',
+    r'difference(?:s)?\s+between\s+(\w+)\s+and\s+(\w+)',
+    r'how\s+(?:do|did)\s+(\w+)\s+and\s+(\w+)\s+(?:differ|compare)',
+]
+
+# Cache for dynamically loaded speaker names
+_speaker_cache = None
+_speaker_cache_time = 0
+SPEAKER_CACHE_TTL = 300  # 5 minutes
+
+def get_known_speakers() -> Set[str]:
+    """
+    Get known speaker names from database (cached).
+
+    This allows the agent to recognize speaker names in queries
+    even for new sessions added after deployment.
+    """
+    global _speaker_cache, _speaker_cache_time
+    import time
+
+    # Return cached result if still valid
+    if _speaker_cache is not None and (time.time() - _speaker_cache_time) < SPEAKER_CACHE_TTL:
+        return _speaker_cache
+
+    try:
+        import mysql.connector
+        conn = mysql.connector.connect(
+            host='localhost',
+            user='vagrant',
+            password='vagrant',
+            database='discussion_capture'
+        )
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT LOWER(alias) FROM speaker WHERE alias IS NOT NULL AND alias != ''")
+        speakers = {row[0] for row in cursor.fetchall()}
+        cursor.close()
+        conn.close()
+
+        # Add common patterns that might not be in DB
+        speakers.update({'speaker_00', 'speaker_01', 'speaker_02', 'speaker_03', 'speaker_04'})
+
+        _speaker_cache = speakers
+        _speaker_cache_time = time.time()
+        logger.debug(f"[Speakers] Loaded {len(speakers)} speaker names from database")
+        return speakers
+
+    except Exception as e:
+        logger.warning(f"[Speakers] Failed to load from database: {e}, using fallback")
+        # Fallback to hardcoded list if DB fails
+        return {
+            'tucker', 'sam', 'david', 'lex', 'noah', 'john', 'jane',
+            'alice', 'bob', 'vanessa', 'julia', 'oliver', 'ezra', 'derek', 'dave',
+            'speaker_00', 'speaker_01', 'speaker_02', 'speaker_03'
+        }
+
+# Legacy constant for backwards compatibility (will be replaced by function calls)
+KNOWN_SPEAKERS = get_known_speakers()
+
+# Patterns for correlation hypotheses (need data from multiple sessions)
+CORRELATION_PATTERNS = [
+    r'sessions?\s+with\s+(?:more|fewer|less|higher|lower)\s+\w+\s+have\s+(?:higher|lower|better|worse)',
+    r'(?:more|fewer|less)\s+\w+\s+(?:correlate|lead|result)s?\s+(?:with|in)\s+(?:higher|lower)',
+    r'(?:do|does|is|are)\s+\w+\s+(?:correlate|related)\s+(?:with|to)',
+    r'test\s+whether\s+sessions?\s+with',
+    r'(?:longer|shorter)\s+sessions?\s+have\s+(?:more|fewer|less|higher|lower)',
+]
+
 
 @dataclass
 class QueryClassification:
     """Classification of query with data requirements."""
-    query_type: str  # single_session, comparison, thematic, superlative, hypothesis, structural, speaker
+    query_type: str  # single_session, comparison, thematic, superlative, hypothesis, structural, speaker, speaker_comparison, correlation
     required_sessions: Set[int]  # Explicit sessions mentioned
     requires_search: bool  # Needs semantic search first
     requires_counter_evidence: bool  # For hypothesis testing
     topic: Optional[str]  # Extracted topic for thematic queries
     min_sessions_needed: int = 1  # Minimum sessions needed for complete answer
+    required_speakers: Set[str] = field(default_factory=set)  # Speakers needed for comparison
+
+
+@dataclass
+class QueryConstraints:
+    """
+    Explicit tool constraints extracted from query.
+
+    This is extracted BEFORE query classification to handle constraint queries
+    like "only transcript", "not transcripts", "focus on concept map".
+    """
+    allowed_tools: Optional[Set[str]] = None  # "only X" -> ONLY these tools allowed
+    blocked_tools: Set[str] = field(default_factory=set)  # "not X" -> these tools blocked
+    focus_tools: Set[str] = field(default_factory=set)  # "focus on X" -> prioritize these
+    mentioned_tools: Set[str] = field(default_factory=set)  # artifacts explicitly mentioned in query -> should be retrieved
+
+
+# Tool name normalization for constraint extraction
+TOOL_ALIASES = {
+    'transcript': 'get_transcript',
+    'transcripts': 'get_transcript',
+    'concept map': 'get_concept_map',
+    'concept_map': 'get_concept_map',
+    'conceptmap': 'get_concept_map',
+    'map': 'get_concept_map',
+    '7c': 'get_7c_analysis',
+    '7c scores': 'get_7c_analysis',
+    '7c analysis': 'get_7c_analysis',
+    'collaboration metrics': 'get_7c_analysis',
+    'collab metrics': 'get_7c_analysis',
+    'speaker profile': 'get_speaker_profile',
+    'speaker profiles': 'get_speaker_profile',
+}
 
 
 @dataclass
@@ -280,6 +383,9 @@ class ScaffoldingAgent:
         """
         logger.info(f"[Agent] Running ReAct loop for query")
 
+        # Extract constraints BEFORE classification (handles "only X" / "not Y" queries)
+        constraints = self._extract_constraints(query)
+
         # Build context
         memory_context = self.memory.get_context_for_llm()
 
@@ -306,6 +412,13 @@ class ScaffoldingAgent:
 
             elif action.action_type == "tool_call" and action.tool_call:
                 tool_call = action.tool_call
+
+                # Skip invalid tool names (e.g., "functions" wrapper from OpenAI parallel calls)
+                valid_tool_names = get_tool_names()
+                if tool_call.name not in valid_tool_names:
+                    logger.debug(f"[Agent] Skipping invalid tool: {tool_call.name}")
+                    continue
+
                 logger.info(f"[Agent] Calling tool: {tool_call.name}")
 
                 # Create hash of tool call to detect duplicates
@@ -352,6 +465,16 @@ class ScaffoldingAgent:
                     })
                     continue
 
+                # Validate against query constraints (explicit "only X" / "not Y" in query)
+                if not self._should_auto_fetch(tool_call.name, constraints):
+                    logger.warning(f"[Agent] Tool blocked by query constraints: {tool_call.name}")
+                    evidence.append({
+                        "type": "constraint_block",
+                        "tool": tool_call.name,
+                        "reason": f"Tool {tool_call.name} blocked by query constraints (allowed={constraints.allowed_tools}, blocked={constraints.blocked_tools})"
+                    })
+                    continue
+
                 # Execute tool
                 result = execute_tool(tool_call.name, tool_call.params)
                 evidence.append({
@@ -360,6 +483,66 @@ class ScaffoldingAgent:
                     "result": result
                 })
                 tool_calls_made.append(tool_call)
+
+                # Auto-fetch artifacts for discovered sessions (like RAG Discovery)
+                # CONSTRAINT-AWARE: Check constraints before auto-fetching
+                if tool_call.name == 'search_sessions':
+                    sessions = result.get('sessions', [])
+                    if sessions:
+                        logger.info(f"[Agent] Auto-fetching artifacts for {len(sessions)} discovered sessions")
+                        for s in sessions:  # Include all sessions returned by similarity search
+                            sid = s.get('session_id')
+                            if sid:
+                                # Fetch transcript (only if not blocked by constraints)
+                                if self._should_auto_fetch('get_transcript', constraints):
+                                    transcript_result = execute_tool('get_transcript', {'session_id': sid})
+                                    evidence.append({
+                                        "tool": "get_transcript",
+                                        "params": {"session_id": sid},
+                                        "result": transcript_result,
+                                        "auto_fetched": True
+                                    })
+                                    self.memory.record_artifact('transcript', sid)
+                                    logger.info(f"[Agent] Auto-fetched transcript for session {sid}")
+
+                                # Fetch concept map (only if not blocked by constraints)
+                                if self._should_auto_fetch('get_concept_map', constraints):
+                                    concept_result = execute_tool('get_concept_map', {'session_id': sid})
+                                    evidence.append({
+                                        "tool": "get_concept_map",
+                                        "params": {"session_id": sid},
+                                        "result": concept_result,
+                                        "auto_fetched": True
+                                    })
+                                    self.memory.record_artifact('concept_map', sid)
+                                    logger.info(f"[Agent] Auto-fetched concept_map for session {sid}")
+
+                                if not self.memory.session_focus:
+                                    self.memory.update_session_focus(sid)
+
+                # Auto-fetch transcript for speaker's session(s) after get_speaker_profile
+                # CONSTRAINT-AWARE: Check constraints before auto-fetching
+                if tool_call.name == 'get_speaker_profile':
+                    sessions = result.get('sessions', [])
+                    speaker_alias = result.get('speaker_alias', tool_call.params.get('speaker_name'))
+                    if sessions and speaker_alias:
+                        # Get transcript filtered by this speaker for first session (if not blocked)
+                        sid = sessions[0].get('session_id')
+                        if sid and self._should_auto_fetch('get_transcript', constraints):
+                            transcript_result = execute_tool('get_transcript', {
+                                'session_id': sid,
+                                'speaker_filter': speaker_alias
+                            })
+                            evidence.append({
+                                "tool": "get_transcript",
+                                "params": {"session_id": sid, "speaker_filter": speaker_alias},
+                                "result": transcript_result,
+                                "auto_fetched": True
+                            })
+                            self.memory.record_artifact('transcript', sid)
+                            if not self.memory.session_focus:
+                                self.memory.update_session_focus(sid)
+                            logger.info(f"[Agent] Auto-fetched transcript for speaker '{speaker_alias}' in session {sid}")
 
                 # Record artifact retrieval in memory
                 if tool_call.name in ['get_transcript', 'get_concept_map', 'get_7c_analysis']:
@@ -392,6 +575,179 @@ class ScaffoldingAgent:
             speaker_focus=self.memory.speaker_focus,
             suggested_explorations=suggestions
         )
+
+    def _extract_constraints(self, query: str) -> QueryConstraints:
+        """
+        Extract tool constraints from query BEFORE classification.
+
+        This handles constraint queries like:
+        - "only transcript" -> allowed_tools = {get_transcript}
+        - "not transcripts" -> blocked_tools = {get_transcript}
+        - "focus on concept map" -> focus_tools = {get_concept_map}
+        - "only collaboration metrics, not transcripts" -> allowed_tools = {get_7c_analysis}, blocked_tools = {get_transcript}
+
+        Returns:
+            QueryConstraints with allowed/blocked/focus tools
+        """
+        query_lower = query.lower()
+
+        allowed_tools = None  # None means all allowed
+        blocked_tools = set()
+        focus_tools = set()
+
+        # Patterns for "only X" (exclusive)
+        only_patterns = [
+            r'(?:use\s+)?only\s+(?:the\s+)?(.+?)(?:\s+to|\s+for|\s+when|\s*[,\.\?]|$)',
+            r'using\s+only\s+(?:the\s+)?(.+?)(?:\s+to|\s+for|\s*[,\.\?]|$)',
+            r'(?:just|exclusively)\s+(?:use\s+)?(?:the\s+)?(.+?)(?:\s+to|\s+for|\s*[,\.\?]|$)',
+        ]
+
+        # Patterns for "not X" / "don't use X" (blocked)
+        not_patterns = [
+            r'(?:don\'t|do\s+not|without)\s+(?:use\s+)?(?:the\s+)?(.+?)(?:\s*[,\.\?]|$)',
+            r'not\s+(?:the\s+)?(.+?)(?:\s*[,\.\?]|$)',
+            r'(?:no|avoid)\s+(.+?)(?:\s*[,\.\?]|$)',
+        ]
+
+        # Patterns for "focus on X" / "emphasize X" (priority)
+        focus_patterns = [
+            r'(?:focus(?:ing)?\s+on|emphasiz(?:e|ing)|prioritiz(?:e|ing))\s+(?:the\s+)?(.+?)(?:\s+when|\s+to|\s*[,\.\?]|$)',
+            r'(?:using|with)\s+(?:primarily\s+)?(?:the\s+)?(.+?)\s+(?:as\s+)?(?:primary|main|focus)',
+            r'primarily\s+(?:the\s+)?(.+?)(?:\s*[,\.\?]|$)',
+        ]
+
+        # Extract "only" constraints
+        for pattern in only_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                artifact_phrase = match.group(1).strip()
+                tool_name = self._resolve_tool_name(artifact_phrase)
+                if tool_name:
+                    if allowed_tools is None:
+                        allowed_tools = set()
+                    allowed_tools.add(tool_name)
+                    logger.debug(f"[Constraints] 'only' constraint: {artifact_phrase} -> {tool_name}")
+
+        # Extract "not" constraints
+        for pattern in not_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                artifact_phrase = match.group(1).strip()
+                tool_name = self._resolve_tool_name(artifact_phrase)
+                if tool_name:
+                    blocked_tools.add(tool_name)
+                    logger.debug(f"[Constraints] 'not' constraint: {artifact_phrase} -> {tool_name}")
+
+        # Extract "focus" constraints
+        for pattern in focus_patterns:
+            match = re.search(pattern, query_lower)
+            if match:
+                artifact_phrase = match.group(1).strip()
+                tool_name = self._resolve_tool_name(artifact_phrase)
+                if tool_name:
+                    focus_tools.add(tool_name)
+                    logger.debug(f"[Constraints] 'focus' constraint: {artifact_phrase} -> {tool_name}")
+
+        # =================================================================
+        # ARTIFACT MENTION DETECTION
+        # If user explicitly mentions an artifact in query, ensure it's retrieved
+        # e.g., "The 7C shows X" → should retrieve 7C to verify
+        # =================================================================
+        mentioned_tools = set()
+
+        # Patterns for artifact mentions (not steering commands, just mentions)
+        mention_patterns = [
+            # "The 7C shows/indicates/reveals..."
+            r'(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)\s+(?:shows?|indicates?|reveals?|suggests?)',
+            # "...according to the 7C/transcript/concept map"
+            r'according\s+to\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
+            # "...based on the 7C/transcript/concept map"
+            r'based\s+on\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
+            # "...from the 7C/transcript/concept map"
+            r'from\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
+            # "...in the 7C/transcript/concept map"
+            r'in\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
+            # "what does the transcript/7C/concept map reveal/show"
+            r'what\s+does\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)\s+(?:reveal|show|indicate)',
+        ]
+
+        for pattern in mention_patterns:
+            matches = re.findall(pattern, query_lower)
+            for match in matches:
+                artifact_phrase = match if isinstance(match, str) else match[0]
+                tool_name = self._resolve_tool_name(artifact_phrase)
+                if tool_name:
+                    mentioned_tools.add(tool_name)
+                    logger.debug(f"[Constraints] Artifact mention detected: '{artifact_phrase}' -> {tool_name}")
+
+        constraints = QueryConstraints(
+            allowed_tools=allowed_tools,
+            blocked_tools=blocked_tools,
+            focus_tools=focus_tools,
+            mentioned_tools=mentioned_tools
+        )
+
+        if allowed_tools or blocked_tools or focus_tools or mentioned_tools:
+            logger.info(f"[Constraints] Extracted: allowed={allowed_tools}, blocked={blocked_tools}, focus={focus_tools}, mentioned={mentioned_tools}")
+
+        return constraints
+
+    def _resolve_tool_name(self, phrase: str) -> Optional[str]:
+        """
+        Resolve a natural language phrase to a tool name.
+
+        Examples:
+            "transcript" -> "get_transcript"
+            "concept map" -> "get_concept_map"
+            "7C scores" -> "get_7c_analysis"
+            "collaboration metrics" -> "get_7c_analysis"
+        """
+        phrase_lower = phrase.lower().strip()
+
+        # Direct lookup in TOOL_ALIASES
+        if phrase_lower in TOOL_ALIASES:
+            return TOOL_ALIASES[phrase_lower]
+
+        # Check for partial matches
+        for alias, tool_name in TOOL_ALIASES.items():
+            if alias in phrase_lower or phrase_lower in alias:
+                return tool_name
+
+        # Check if already a tool name
+        tool_names = get_tool_names()
+        if phrase_lower in tool_names:
+            return phrase_lower
+        if f"get_{phrase_lower}" in tool_names:
+            return f"get_{phrase_lower}"
+
+        return None
+
+    def _should_auto_fetch(self, tool_name: str, constraints: QueryConstraints) -> bool:
+        """
+        Check if a tool should be allowed given the query constraints.
+
+        Returns False if the tool is blocked or not in allowed_tools (when specified).
+
+        Note: Discovery tools (list_sessions, search_sessions) are always allowed
+        since they're needed for finding which sessions to query. The constraints
+        only apply to artifact tools (get_transcript, get_concept_map, get_7c_analysis).
+        """
+        # Discovery tools are always allowed - they help find sessions
+        discovery_tools = {'list_sessions', 'search_sessions'}
+        if tool_name in discovery_tools:
+            return True
+
+        # If this tool is explicitly blocked, don't allow it
+        if tool_name in constraints.blocked_tools:
+            logger.info(f"[Constraints] Blocking {tool_name}: in blocked_tools")
+            return False
+
+        # If allowed_tools is specified (for artifact tools) and this tool isn't in it, block it
+        if constraints.allowed_tools is not None and tool_name not in constraints.allowed_tools:
+            logger.info(f"[Constraints] Blocking {tool_name}: not in allowed_tools {constraints.allowed_tools}")
+            return False
+
+        return True
 
     def _decide_action(
         self,
@@ -686,6 +1042,36 @@ Write a conversational response that guides the user through the evidence."""
 
         return sessions
 
+    def _extract_speakers_from_query(self, query: str) -> Set[str]:
+        """
+        Extract speaker names mentioned in query.
+
+        Returns set of speaker names that should have profiles retrieved.
+        """
+        query_lower = query.lower()
+        speakers = set()
+
+        # Check speaker comparison patterns for explicit speaker names
+        for pattern in SPEAKER_COMPARISON_PATTERNS:
+            match = re.search(pattern, query_lower, re.IGNORECASE)
+            if match and match.lastindex and match.lastindex >= 2:
+                # Extract both speaker names from comparison pattern
+                speaker1 = match.group(1).lower()
+                speaker2 = match.group(2).lower()
+                known_speakers = get_known_speakers()
+                if speaker1 in known_speakers or len(speaker1) >= 3:
+                    speakers.add(speaker1.title())  # Normalize to Title Case
+                if speaker2 in known_speakers or len(speaker2) >= 3:
+                    speakers.add(speaker2.title())
+
+        # Also check for known speaker names mentioned anywhere
+        known_speakers = get_known_speakers()
+        for speaker in known_speakers:
+            if speaker in query_lower:
+                speakers.add(speaker.title())
+
+        return speakers
+
     def _classify_query(self, query: str) -> QueryClassification:
         """
         Classify query and determine data requirements.
@@ -699,6 +1085,21 @@ Write a conversational response that guides the user through the evidence."""
         """
         query_lower = query.lower()
         required_sessions = self._extract_sessions_from_query(query)
+        required_speakers = self._extract_speakers_from_query(query)
+
+        # 0. Check for SPEAKER COMPARISON patterns FIRST
+        # These need profiles for ALL mentioned speakers
+        for pattern in SPEAKER_COMPARISON_PATTERNS:
+            if re.search(pattern, query_lower, re.IGNORECASE):
+                return QueryClassification(
+                    query_type='speaker_comparison',
+                    required_sessions=required_sessions,
+                    requires_search=len(required_sessions) == 0,  # Search if no explicit sessions
+                    requires_counter_evidence=False,
+                    topic=None,
+                    min_sessions_needed=0,  # Speaker profiles can be cross-session
+                    required_speakers=required_speakers
+                )
 
         # 1. Check for THEMATIC patterns (should use search_sessions)
         # These are topic-based queries without explicit session references
@@ -725,7 +1126,20 @@ Write a conversational response that guides the user through the evidence."""
                     min_sessions_needed=1
                 )
 
-        # 2. Check for HYPOTHESIS patterns
+        # 2. Check for CORRELATION patterns (specific type of hypothesis)
+        # These need 7C data from multiple sessions to test patterns
+        for pattern in CORRELATION_PATTERNS:
+            if re.search(pattern, query_lower, re.IGNORECASE):
+                return QueryClassification(
+                    query_type='correlation',
+                    required_sessions=set(),  # Need to discover via list_sessions
+                    requires_search=False,
+                    requires_counter_evidence=False,
+                    topic=None,
+                    min_sessions_needed=3  # Need at least 3 sessions for correlation
+                )
+
+        # 3. Check for HYPOTHESIS patterns
         # These need evidence from all mentioned entities + counter-evidence
         for pattern in HYPOTHESIS_PATTERNS:
             if re.search(pattern, query_lower, re.IGNORECASE):
@@ -889,6 +1303,43 @@ Write a conversational response that guides the user through the evidence."""
 
         return sessions
 
+    def _get_speakers_retrieved(self, evidence: List[Dict]) -> Set[str]:
+        """Extract speaker names from evidence that has been retrieved via get_speaker_profile."""
+        speakers = set()
+
+        for e in evidence:
+            if e.get("type") == "steering_block":
+                continue
+
+            tool = e.get("tool", "")
+            params = e.get("params", {})
+
+            # Only count get_speaker_profile calls
+            if tool == "get_speaker_profile":
+                speaker_name = params.get("speaker_name", "")
+                if speaker_name:
+                    speakers.add(speaker_name.title())  # Normalize to Title Case
+
+        return speakers
+
+    def _get_sessions_with_7c(self, evidence: List[Dict]) -> Set[int]:
+        """Extract session IDs that have 7C analysis retrieved."""
+        sessions = set()
+
+        for e in evidence:
+            if e.get("type") == "steering_block":
+                continue
+
+            tool = e.get("tool", "")
+            params = e.get("params", {})
+
+            if tool == "get_7c_analysis":
+                session_id = params.get("session_id")
+                if session_id:
+                    sessions.add(session_id)
+
+        return sessions
+
     def _analyze_query_completeness(self, query: str, evidence: List[Dict]) -> dict:
         """
         Analyze whether we have sufficient evidence for the query.
@@ -911,6 +1362,7 @@ Write a conversational response that guides the user through the evidence."""
         """
         classification = self._classify_query(query)
         retrieved_sessions = self._get_sessions_retrieved(evidence)
+        retrieved_speakers = self._get_speakers_retrieved(evidence)
 
         # Check what types of evidence we have
         has_search_results = any(
@@ -925,18 +1377,116 @@ Write a conversational response that guides the user through the evidence."""
             e.get("tool") in ["get_7c_analysis", "get_concept_map", "get_transcript"]
             for e in evidence if e.get("type") != "steering_block"
         )
+        has_speaker_data = any(
+            e.get("tool") == "get_speaker_profile"
+            for e in evidence if e.get("type") != "steering_block"
+        )
 
         base_result = {
             'query_type': classification.query_type,
             'classification': classification,
             'required_sessions': classification.required_sessions,
             'retrieved_sessions': retrieved_sessions,
+            'required_speakers': classification.required_speakers,
+            'retrieved_speakers': retrieved_speakers,
             'has_search_results': has_search_results,
             'has_detailed_data': has_detailed_data,
+            'has_speaker_data': has_speaker_data,
             # Legacy fields for backwards compatibility
-            'is_comparison': classification.query_type in ['comparison', 'hypothesis'],
+            'is_comparison': classification.query_type in ['comparison', 'hypothesis', 'speaker_comparison'],
             'is_superlative': classification.query_type == 'superlative',
+            'is_speaker_comparison': classification.query_type == 'speaker_comparison',
         }
+
+        # =================================================================
+        # CONSTRAINT-DRIVEN COMPLETENESS: Check if constrained tools used
+        # This ensures "only collaboration metrics" actually calls get_7c_analysis
+        # =================================================================
+        constraints = self._extract_constraints(query)
+        if constraints.allowed_tools:
+            # User explicitly requested specific tools (e.g., "only collaboration metrics")
+            # Check if ANY of those tools have been called
+            tools_used = {
+                e.get('tool') for e in evidence
+                if e.get('type') not in ('steering_block', 'constraint_block')
+            }
+            constrained_tools_used = constraints.allowed_tools & tools_used
+
+            if not constrained_tools_used:
+                # We have NOT called the required tools yet
+                # Discovery tools are fine, but we need the actual data tools
+                missing_tool = list(constraints.allowed_tools)[0]
+
+                # Get a session ID to query (from list_sessions or search_sessions results)
+                session_id = None
+                for e in evidence:
+                    if e.get('tool') in ('list_sessions', 'search_sessions'):
+                        result = e.get('result', {})
+                        sessions = result.get('sessions', [])
+                        if sessions:
+                            session_id = sessions[0].get('session_id')
+                            break
+
+                logger.info(f"[Constraints] Constrained tools {constraints.allowed_tools} not yet used. "
+                           f"Forcing {missing_tool} for session {session_id}")
+
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'missing_speakers': set(),
+                    'complete': False,
+                    'reason': f'Query requires {constraints.allowed_tools} but none have been called yet',
+                    'next_action': missing_tool,
+                    'next_action_session': session_id,  # Pass session ID for the forced tool
+                    'constraint_driven': True
+                }
+
+        # SPEAKER_COMPARISON: Need profiles for ALL mentioned speakers
+        if classification.query_type == 'speaker_comparison':
+            missing_speakers = classification.required_speakers - retrieved_speakers
+            if missing_speakers:
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'missing_speakers': missing_speakers,
+                    'complete': False,
+                    'reason': f'Missing speaker profiles for: {missing_speakers}',
+                    'next_action': 'get_speaker_profile'
+                }
+            # Need profiles for at least 2 speakers for comparison
+            if len(retrieved_speakers) < 2:
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'missing_speakers': classification.required_speakers,
+                    'complete': False,
+                    'reason': 'Need speaker profiles for both speakers to compare',
+                    'next_action': 'get_speaker_profile'
+                }
+            return {**base_result, 'missing_sessions': set(), 'missing_speakers': set(), 'complete': True, 'reason': None}
+
+        # CORRELATION: Need 7C from at least 3 sessions to test pattern
+        if classification.query_type == 'correlation':
+            sessions_with_7c = self._get_sessions_with_7c(evidence)
+            if not has_list_overview:
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'sessions_with_7c': sessions_with_7c,
+                    'complete': False,
+                    'reason': 'Need list_sessions to find sessions for correlation analysis',
+                    'next_action': 'list_sessions'
+                }
+            if len(sessions_with_7c) < 3:
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'sessions_with_7c': sessions_with_7c,
+                    'complete': False,
+                    'reason': f'Need 7C data from at least 3 sessions to test correlation (have {len(sessions_with_7c)})',
+                    'next_action': 'get_7c_analysis'
+                }
+            return {**base_result, 'missing_sessions': set(), 'sessions_with_7c': sessions_with_7c, 'complete': True, 'reason': None}
 
         # THEMATIC: Need search + retrieval from at least one match
         if classification.query_type == 'thematic':
@@ -1110,7 +1660,8 @@ Write a conversational response that guides the user through the evidence."""
         next_action = analysis.get('next_action')
         if next_action:
             if next_action == 'search_sessions':
-                topic = classification.topic if classification else self._extract_likely_topic(query)
+                # Use extracted topic for semantic search - more precise than full question
+                topic = classification.topic if classification and classification.topic else self._extract_likely_topic(query)
                 return AgentAction(
                     action_type="tool_call",
                     tool_call=ToolCall(
@@ -1129,7 +1680,19 @@ Write a conversational response that guides the user through the evidence."""
                     )
                 )
             elif next_action == 'get_speaker_profile':
-                # Try to extract speaker name
+                # For speaker comparisons, get first missing speaker
+                missing_speakers = analysis.get('missing_speakers', set())
+                if missing_speakers:
+                    speaker_name = list(missing_speakers)[0]
+                    return AgentAction(
+                        action_type="tool_call",
+                        tool_call=ToolCall(
+                            name="get_speaker_profile",
+                            params={"speaker_name": speaker_name},
+                            reason=f"Get profile for speaker '{speaker_name}' (needed for comparison)"
+                        )
+                    )
+                # Fallback: Try to extract speaker name from query
                 speaker_match = re.search(r"(\w+)'s?\s+(?:style|pattern|engagement|contribution)", query_lower)
                 speaker_name = speaker_match.group(1) if speaker_match else "unknown"
                 return AgentAction(
@@ -1152,6 +1715,22 @@ Write a conversational response that guides the user through the evidence."""
                         reason=f"Get {tool_name} for session {session_id}"
                     )
                 )
+            elif analysis.get('constraint_driven'):
+                # Constraint-driven retrieval: User said "only X" so we MUST call X
+                tool_name = next_action
+                session_id = analysis.get('next_action_session')
+                if not session_id:
+                    # No session ID from discovery yet, try to get one
+                    session_id = self._get_session_to_retrieve(analysis, query)
+                logger.info(f"[Constraints] Forcing constrained tool call: {tool_name} for session {session_id}")
+                return AgentAction(
+                    action_type="tool_call",
+                    tool_call=ToolCall(
+                        name=tool_name,
+                        params={"session_id": session_id} if session_id else {},
+                        reason=f"Query explicitly requires {tool_name} (constraint: 'only')"
+                    )
+                )
 
         # Get first missing session if explicit sessions needed
         if analysis.get('missing_sessions'):
@@ -1166,8 +1745,54 @@ Write a conversational response that guides the user through the evidence."""
                 )
             )
 
-        # For superlative/hypothesis queries needing more detailed data
+        # Get first missing speaker if speaker comparison
+        if analysis.get('missing_speakers'):
+            speaker_name = list(analysis['missing_speakers'])[0]
+            return AgentAction(
+                action_type="tool_call",
+                tool_call=ToolCall(
+                    name="get_speaker_profile",
+                    params={"speaker_name": speaker_name},
+                    reason=f"Retrieve speaker profile for '{speaker_name}' (needed for comparison)"
+                )
+            )
+
+        # For speaker comparison queries needing more profiles
         query_type = analysis.get('query_type', '')
+        if query_type == 'speaker_comparison' and not analysis['complete']:
+            # Get the first speaker that doesn't have a profile yet
+            required = analysis.get('required_speakers', set())
+            retrieved = analysis.get('retrieved_speakers', set())
+            missing = required - retrieved
+            if missing:
+                speaker_name = list(missing)[0]
+                return AgentAction(
+                    action_type="tool_call",
+                    tool_call=ToolCall(
+                        name="get_speaker_profile",
+                        params={"speaker_name": speaker_name},
+                        reason=f"Get speaker profile for '{speaker_name}'"
+                    )
+                )
+
+        # For correlation queries needing more 7C data
+        query_type = analysis.get('query_type', '')
+        if query_type == 'correlation' and not analysis['complete']:
+            sessions_with_7c = analysis.get('sessions_with_7c', set())
+            # Get next session that doesn't have 7C yet
+            top_sessions = [24, 20, 21, 25, 18, 19, 23, 22, 26]  # Varied by collaboration score
+            for session_id in top_sessions:
+                if session_id not in sessions_with_7c:
+                    return AgentAction(
+                        action_type="tool_call",
+                        tool_call=ToolCall(
+                            name="get_7c_analysis",
+                            params={"session_id": session_id},
+                            reason=f"Get 7C analysis for session {session_id} (need {3 - len(sessions_with_7c)} more for correlation)"
+                        )
+                    )
+
+        # For superlative/hypothesis queries needing more detailed data
         if query_type in ['superlative', 'hypothesis'] and not analysis['complete']:
             session_id = self._get_session_to_retrieve(analysis, query)
             tool_name = self._select_artifact_tool(query)
@@ -1196,6 +1821,33 @@ Write a conversational response that guides the user through the evidence."""
         # Fallback: respond anyway
         logger.info(f"[Agent] No retrieval action needed, falling back to respond")
         return AgentAction(action_type="respond")
+
+    def _get_session_id_from_evidence(self, evidence: List[Dict]) -> Optional[int]:
+        """
+        Extract a session ID from already-gathered evidence.
+
+        Looks for session IDs in list_sessions, search_sessions, or other tool results.
+        """
+        for e in evidence:
+            tool = e.get('tool', '')
+            result = e.get('result', {})
+
+            # From list_sessions or search_sessions
+            if tool in ('list_sessions', 'search_sessions'):
+                sessions = result.get('sessions', [])
+                if sessions:
+                    return sessions[0].get('session_id')
+
+            # From get_transcript, get_concept_map, get_7c_analysis
+            if tool in ('get_transcript', 'get_concept_map', 'get_7c_analysis'):
+                if 'session_id' in result:
+                    return result.get('session_id')
+                # Also check params
+                params = e.get('params', {})
+                if 'session_id' in params:
+                    return params.get('session_id')
+
+        return None
 
     def _get_session_to_retrieve(self, analysis: dict, query: str) -> int:
         """
@@ -1294,13 +1946,31 @@ Write a conversational response that guides the user through the evidence."""
                 reason="Get overview of all sessions for comparison"
             )
 
+        # SPEAKER_COMPARISON: Get profile for first speaker
+        if classification.query_type == 'speaker_comparison' and classification.required_speakers:
+            speaker_name = list(classification.required_speakers)[0]
+            return ToolCall(
+                name="get_speaker_profile",
+                params={"speaker_name": speaker_name},
+                reason=f"Get speaker profile for '{speaker_name}' (for comparison)"
+            )
+
+        # CORRELATION: Start with list_sessions to see all sessions, then retrieve 7C
+        if classification.query_type == 'correlation':
+            return ToolCall(
+                name="list_sessions",
+                params={},
+                reason="Get overview of all sessions for correlation analysis"
+            )
+
         # HYPOTHESIS without explicit sessions: Search first
         if classification.query_type == 'hypothesis' and classification.requires_search:
-            topic = classification.topic or self._extract_likely_topic(query)
+            # Use extracted topic for semantic search - more precise than full question
+            topic = classification.topic if classification.topic else self._extract_likely_topic(query)
             return ToolCall(
                 name="search_sessions",
                 params={"query": topic, "top_k": 5},
-                reason=f"Search for sessions relevant to hypothesis about '{topic}'"
+                reason=f"Search for sessions about '{topic}'"
             )
 
         # COMPARISON/HYPOTHESIS with explicit sessions: Get data for first session
@@ -1332,6 +2002,7 @@ Write a conversational response that guides the user through the evidence."""
             )
 
         # Default fallback: search_sessions with extracted topic
+        # Use extracted topic for semantic search - more precise than full question
         topic = self._extract_likely_topic(query)
         return ToolCall(
             name="search_sessions",
