@@ -642,7 +642,7 @@ def format_tool_descriptions_for_llm() -> str:
     for tool in TOOL_DESCRIPTIONS:
         params = tool.get("parameters", {}).get("properties", {})
         param_str = ", ".join(params.keys()) if params else "none"
-        lines.append(f"- **{tool['name']}**({param_str}): {tool['description'][:100]}...")
+        lines.append(f"- **{tool['name']}**({param_str}): {tool['description']}")
     return "\n".join(lines)
 
 

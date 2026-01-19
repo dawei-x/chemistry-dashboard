@@ -6,7 +6,7 @@
  * heterogeneous artifacts (concept maps, 7C analysis, LIWC).
  *
  * This component uses the same AgentChatPanel but configured
- * to use Agent V4's baseline mode which only has transcript access.
+ * to use Agent V3's baseline mode which only has transcript access.
  */
 
 import React from 'react';
@@ -16,7 +16,7 @@ const BaselineChatPanel = (props) => {
     return (
         <AgentChatPanel
             {...props}
-            apiEndpoint="api/v4/agent"
+            apiEndpoint="api/v3/agent/baseline"
             variant="baseline"
             mode="baseline"
         />

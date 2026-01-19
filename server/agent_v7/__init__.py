@@ -8,7 +8,7 @@ A simplified agent architecture based on pure ReAct pattern:
 - Scaffolded responses that point to specific evidence
 - Artifact steering (user controls which tools to use)
 
-Architecture (V7.2):
+Architecture:
 - react_agent.py: Core ReAct loop - LLM decides tools
 - prompts_v2.py: System prompt with tool selection guidance
 - memory.py: Conversation context persistence
@@ -16,20 +16,8 @@ Architecture (V7.2):
 - steering.py: Extract and validate user steering preferences
 - graph_v2.py: LangGraph wrapper for agent invocation
 - routes_v2.py: Flask API endpoints
-
-Key files:
-- react_agent.py: Main agent logic
-- tools_v2.py: Tool definitions and execution
 - tools/artifact_tools.py: Database queries (implementations)
-- prompts_v2.py: LLM prompts and guidance
-- memory.py: Conversation memory
-
-Deprecated files (renamed with _deprecated suffix):
-- classifier_deprecated.py: Was used for query routing (V7.1)
-- exploratory_deprecated.py: Was used for cross-session retrieval (V7.1)
-- graph_deprecated.py: Old LangGraph implementation
-- routes_deprecated.py: Old Flask routes
-- state_deprecated.py: Old state management
+- llm/: LLM client abstraction
 
 Handler: V7_PURE_REACT
 """

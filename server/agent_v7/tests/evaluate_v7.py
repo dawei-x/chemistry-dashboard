@@ -8,9 +8,6 @@ outputs against expectations.
 Run with:
     cd /home/ubuntu/chemistry-dashboard/server
     ~/.pyenv/versions/blinc/bin/python agent_v7/tests/evaluate_v7.py
-
-Author: Claude (AI Assistant)
-Date: 2026-01-15
 """
 
 import sys

@@ -19,11 +19,11 @@ export class AgentService {
      * @param {Array<string>} steeringOptions.preferred_representations - Representations to focus on
      * @param {Array<string>} steeringOptions.exclude_representations - Representations to exclude
      * @param {string} steeringOptions.analysis_mode - Mode: 'explore', 'compare', 'trace'
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @param {string} mode - Agent mode: 'enhanced' (all artifacts) or 'baseline' (transcript only)
      * @returns {Promise<Object>} Agent response with answer, citations, etc.
      */
-    async query(query, conversationId = null, sessionDeviceId = null, steeringOptions = null, apiEndpoint = 'api/v4/agent', mode = 'enhanced') {
+    async query(query, conversationId = null, sessionDeviceId = null, steeringOptions = null, apiEndpoint = 'api/v7/agent', mode = 'enhanced') {
         const data = {
             query,
             conversation_id: conversationId,
@@ -64,7 +64,7 @@ export class AgentService {
      * @returns {Promise<Object>} Baseline agent response
      */
     async queryBaseline(query, conversationId = null, sessionDeviceId = null) {
-        return this.query(query, conversationId, sessionDeviceId, null, 'api/v4/agent', 'baseline');
+        return this.query(query, conversationId, sessionDeviceId, null, 'api/v3/agent/baseline', 'baseline');
     }
 
     /**
@@ -72,10 +72,10 @@ export class AgentService {
      *
      * @param {number} limit - Max conversations to return
      * @param {string|null} variant - Filter by variant ('baseline' or null for full agent)
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @returns {Promise<Array>} List of conversations
      */
-    async listConversations(limit = 20, variant = null, apiEndpoint = 'api/v4/agent') {
+    async listConversations(limit = 20, variant = null, apiEndpoint = 'api/v7/agent') {
         const response = await api.get(`${apiEndpoint}/conversations`);
 
         if (!response.ok) {
@@ -92,10 +92,10 @@ export class AgentService {
      * Get a specific conversation with messages.
      *
      * @param {string} conversationId - Conversation ID
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @returns {Promise<Object>} Conversation with messages
      */
-    async getConversation(conversationId, apiEndpoint = 'api/v4/agent') {
+    async getConversation(conversationId, apiEndpoint = 'api/v7/agent') {
         const response = await api.get(`${apiEndpoint}/conversations/${conversationId}`);
 
         if (!response.ok) {
@@ -107,15 +107,15 @@ export class AgentService {
 
     /**
      * Get messages for a conversation.
-     * For V4, this returns the messages from getConversation.
+     * Returns the messages from getConversation.
      *
      * @param {string} conversationId - Conversation ID
      * @param {number} offset - Starting offset
      * @param {number|null} limit - Max messages
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @returns {Promise<Array>} Messages
      */
-    async getMessages(conversationId, offset = 0, limit = null, apiEndpoint = 'api/v4/agent') {
+    async getMessages(conversationId, offset = 0, limit = null, apiEndpoint = 'api/v7/agent') {
         const conversation = await this.getConversation(conversationId, apiEndpoint);
         return conversation.messages || [];
     }
@@ -124,10 +124,10 @@ export class AgentService {
      * Delete a conversation.
      *
      * @param {string} conversationId - Conversation ID
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @returns {Promise<boolean>} Success status
      */
-    async deleteConversation(conversationId, apiEndpoint = 'api/v4/agent') {
+    async deleteConversation(conversationId, apiEndpoint = 'api/v7/agent') {
         const response = await api.delete(`${apiEndpoint}/conversations/${conversationId}`);
 
         if (!response.ok) {
@@ -141,10 +141,10 @@ export class AgentService {
      * Create a new conversation.
      *
      * @param {string|null} title - Optional title for the conversation
-     * @param {string} apiEndpoint - API endpoint path (default: 'api/v4/agent')
+     * @param {string} apiEndpoint - API endpoint path (default: 'api/v7/agent')
      * @returns {Promise<Object>} Created conversation
      */
-    async createConversation(title = null, apiEndpoint = 'api/v4/agent') {
+    async createConversation(title = null, apiEndpoint = 'api/v7/agent') {
         const response = await api.post(`${apiEndpoint}/conversations`, {
             title: title || 'New Conversation'
         });
@@ -158,15 +158,15 @@ export class AgentService {
 
     /**
      * Rename a conversation.
-     * Note: V4 doesn't have a rename endpoint yet, but keeping for compatibility.
+     * Note: Rename endpoint not implemented - titles are set from first message.
      *
      * @param {string} conversationId - Conversation ID
      * @param {string} newTitle - New title for the conversation
      * @returns {Promise<Object>} Updated conversation
      */
     async renameConversation(conversationId, newTitle) {
-        // V4 doesn't have rename yet - just return success
-        console.warn('Rename not implemented for V4 - conversation titles are set from first message');
+        // Rename not implemented - titles are set from first message
+        console.warn('Rename not implemented - conversation titles are set from first message');
         return { conversation_id: conversationId, title: newTitle };
     }
 

@@ -7,9 +7,6 @@
 export { default as AgentChatPanel } from './AgentChatPanel';
 export { default as BaselineChatPanel } from './BaselineChatPanel';
 export { default as V3ChatPanel } from './V3ChatPanel';
-export { default as V4ChatPanel } from './V4ChatPanel';
-export { default as V5ChatPanel } from './V5ChatPanel';
-export { default as V6ChatPanel } from './V6ChatPanel';
 export { default as V7ChatPanel } from './V7ChatPanel';
 export { default as MessageBubble } from './MessageBubble';
 export { default as CitationCard } from './CitationCard';

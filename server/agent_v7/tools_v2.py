@@ -160,11 +160,7 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
                 lines.append(f"   Relevance: {score:.2f}")
             lines.append(f"   Speakers: {speaker_str}")
             if preview:
-                # Show first 150 chars of preview for context
-                preview_short = preview[:150].strip()
-                if len(preview) > 150:
-                    preview_short += "..."
-                lines.append(f"   Preview: {preview_short}")
+                lines.append(f"   Preview: {preview}")
             lines.append("")
 
     return {
@@ -731,9 +727,7 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
             lines.append(f"--- Sample Quotes ({len(sample_quotes)}) ---")
             for q in sample_quotes:
                 quote_type = q.get('quote_type', 'statement')
-                text = q['text'][:200] if q['text'] else ''
-                if len(q['text']) > 200:
-                    text += "..."
+                text = q['text'] if q['text'] else ''
                 cert = q.get('certainty_value') or 0
                 anal = q.get('analytic_thinking_value') or 0
                 label = {'question': '[Question]', 'high_certainty': '[Certain]', 'high_analytic': '[Analytic]'}.get(quote_type, '')
@@ -747,12 +741,12 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
             t = cn['node_type'] or 'concept'
             if t not in concept_by_type:
                 concept_by_type[t] = []
-            concept_by_type[t].append(cn['text'][:100] if cn['text'] else '')
+            concept_by_type[t].append(cn['text'] if cn['text'] else '')
 
         lines.append(f"--- Concept Contributions ({len(concept_nodes)} total) ---")
         for ctype, concepts in concept_by_type.items():
             lines.append(f"{ctype}: {len(concepts)}")
-            for c in concepts[:3]:  # Show first 3 examples per type
+            for c in concepts:  # Show ALL concepts per type
                 lines.append(f"  - {c}")
         lines.append("")
 

@@ -89,9 +89,6 @@ from agent_routes import agent_bp
 from agent_v2.routes import agent_v2_bp
 from agent_v3.routes import agent_v3_bp
 from agent_v3.baseline import baseline_bp  # Baseline agent for AIED 2026
-from agent_v4.routes import agent_v4_bp  # High-agency agent for AIED 2026
-from agent_v5.routes import agent_v5_bp  # Context-first agentic for AIED 2026
-from agent_v6.routes import agent_v6_bp  # Definitive architecture for AIED 2026
 from agent_v7.routes_v2 import agent_v7_bp  # Simplified 5-tool architecture
 
 # Register LLM routes
@@ -104,9 +101,6 @@ app.register_blueprint(agent_bp)
 app.register_blueprint(agent_v2_bp)  # LangGraph agent v2
 app.register_blueprint(agent_v3_bp)  # Ultra Agent v3 - intelligent reasoning
 app.register_blueprint(baseline_bp)  # Baseline agent (transcript-only) for AIED 2026
-app.register_blueprint(agent_v4_bp)  # High-agency agent v4 for AIED 2026
-app.register_blueprint(agent_v5_bp)  # Context-first agentic v5 for AIED 2026
-app.register_blueprint(agent_v6_bp)  # Definitive architecture v6 for AIED 2026
 app.register_blueprint(agent_v7_bp)  # Full context agent v7 - no truncation limits
 
 init_concept_websocket(socketio)

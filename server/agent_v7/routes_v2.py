@@ -352,3 +352,132 @@ def reset():
         return jsonify({'success': True, 'message': f'Reset conversation {conversation_id}'})
     else:
         return jsonify({'error': 'conversation_id required'}), 400
+
+
+# =============================================================================
+# CONVERSATION PERSISTENCE ENDPOINTS (for left panel)
+# =============================================================================
+
+@agent_v7_bp.route('/conversations', methods=['GET'])
+def list_conversations():
+    """
+    List all conversations for the left panel.
+    Uses database storage for persistence.
+    """
+    try:
+        import database as db_helper
+        user_id = _get_user_id()
+
+        # Get conversations from database (filtered by agent version v7.x, no limit)
+        conversations = db_helper.get_agent_conversations(user_id=user_id, agent_version=AGENT_VERSION, limit=None)
+
+        # Format for frontend
+        formatted = []
+        for conv in conversations:
+            formatted.append({
+                'id': conv.id,
+                'conversation_id': conv.id,
+                'title': conv.title or 'Conversation',
+                'created_at': conv.created_at.isoformat() if conv.created_at else None,
+                'updated_at': conv.last_active.isoformat() if conv.last_active else None
+            })
+
+        return jsonify({
+            'conversations': formatted,
+            'count': len(formatted)
+        })
+
+    except Exception as e:
+        logger.error(f"List conversations error: {e}")
+        return jsonify({'conversations': [], 'count': 0, 'error': str(e)})
+
+
+@agent_v7_bp.route('/conversations/<conversation_id>', methods=['GET'])
+def get_conversation(conversation_id):
+    """
+    Get a specific conversation with its messages.
+    """
+    try:
+        import database as db_helper
+
+        # Get conversation
+        conv = db_helper.get_agent_conversations(conversation_id=conversation_id)
+        if not conv:
+            return jsonify({
+                'conversation_id': conversation_id,
+                'error': 'Conversation not found',
+                'messages': []
+            }), 404
+
+        # Get messages
+        messages = db_helper.get_agent_messages(conversation_id=conversation_id)
+
+        formatted_messages = []
+        for msg in messages:
+            formatted_messages.append({
+                'id': msg.id,
+                'role': msg.role,
+                'content': msg.content,
+                'citations': msg.citations,
+                'tools_used': msg.tools_used,
+                'created_at': msg.created_at.isoformat() if msg.created_at else None
+            })
+
+        return jsonify({
+            'conversation_id': conversation_id,
+            'title': conv.title or 'Conversation',
+            'messages': formatted_messages,
+            'created_at': conv.created_at.isoformat() if conv.created_at else None,
+            'updated_at': conv.last_active.isoformat() if conv.last_active else None
+        })
+
+    except Exception as e:
+        logger.error(f"Get conversation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@agent_v7_bp.route('/conversations/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    """Delete a conversation and its messages."""
+    try:
+        import database as db_helper
+
+        # Delete from database
+        db_helper.delete_agent_conversation(conversation_id)
+
+        # Clear in-memory context
+        clear_memory(conversation_id)
+
+        return jsonify({'success': True, 'message': f'Deleted conversation {conversation_id}'})
+
+    except Exception as e:
+        logger.error(f"Delete conversation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@agent_v7_bp.route('/conversations', methods=['POST'])
+def create_conversation():
+    """Create a new conversation explicitly."""
+    try:
+        import database as db_helper
+
+        data = request.get_json() or {}
+        title = data.get('title', 'New Conversation')
+        user_id = _get_user_id()
+
+        # Create in database
+        conv = db_helper.create_agent_conversation(
+            user_id=user_id,
+            title=title,
+            agent_version=AGENT_VERSION
+        )
+
+        return jsonify({
+            'conversation_id': conv.id,
+            'title': title,
+            'created': True
+        })
+
+    except Exception as e:
+        logger.error(f"Create conversation error: {e}")
+        return jsonify({'error': str(e)}), 500

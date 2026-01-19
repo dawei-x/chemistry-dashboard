@@ -1,0 +1,25 @@
+# Sample queries for V7.2 agent testing
+# Lines starting with # are comments
+
+# Structural queries
+What sessions are available?
+How many sessions are there?
+
+# Single session queries
+Tell me about the Nuclear Fusion session
+What was discussed in Is AI Alive?
+
+# Thematic queries
+What was said about AI?
+Sessions about collaboration
+
+# Speaker queries
+Tell me about Tucker's contributions
+How did David engage in discussions?
+
+# Comparison queries
+Compare collaboration in Is AI Alive and Nuclear Fusion
+
+# Constraint queries
+Analyze Nuclear Fusion using only the transcript
+Focus on the concept map for Is AI Alive

@@ -978,10 +978,10 @@ Write a conversational response that guides the user through the evidence."""
                 if result.get("error"):
                     lines.append(f"[{tool}] Error: {result.get('error')}")
                 else:
-                    # Show first 3 lines of display as summary
+                    # Show first 10 lines of display as summary
                     display = result.get("display", "")
                     if display:
-                        summary_lines = display.split("\n")[:3]
+                        summary_lines = display.split("\n")[:10]
                         summary = " | ".join(line.strip() for line in summary_lines if line.strip())
                         lines.append(f"[{tool}] {summary}")
                     else:
