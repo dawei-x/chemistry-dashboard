@@ -228,33 +228,33 @@ def _extract_citations(evidence: list) -> list:
         result = e.get('result', {})
 
         if tool == 'get_transcript':
-            session_id = result.get('session_id')
+            discussion_id = result.get('discussion_id')
             session_name = result.get('session_name', '')
             utterances = result.get('utterances', [])
             if utterances:
                 citations.append({
                     'type': 'transcript',
-                    'session_id': session_id,
+                    'discussion_id': discussion_id,
                     'session_name': session_name,
                     'count': len(utterances)
                 })
 
         elif tool == 'get_concept_map':
-            session_id = result.get('session_id')
+            discussion_id = result.get('discussion_id')
             summary = result.get('summary', {})
             citations.append({
                 'type': 'concept_map',
-                'session_id': session_id,
+                'discussion_id': discussion_id,
                 'nodes': summary.get('total_nodes', 0),
                 'edges': summary.get('total_edges', 0)
             })
 
         elif tool == 'get_7c_analysis':
-            session_id = result.get('session_id')
+            discussion_id = result.get('discussion_id')
             summary = result.get('summary', {})
             citations.append({
                 'type': 'collaboration',
-                'session_id': session_id,
+                'discussion_id': discussion_id,
                 'overall_score': summary.get('overall_score')
             })
 
@@ -281,7 +281,7 @@ def get_context():
             'artifacts_retrieved': [
                 {
                     'type': a.artifact_type,
-                    'session_id': a.session_id,
+                    'discussion_id': a.session_id,  # session_id in memory maps to discussion_id in API
                     'turn': a.turn_number
                 }
                 for a in memory.artifacts_retrieved[-10:]

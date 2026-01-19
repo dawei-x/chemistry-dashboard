@@ -442,13 +442,13 @@ Use for:
 - Verifying claims with exact quotes
 - Analyzing specific speaker's contributions (use speaker_filter)
 
-For cross-session analysis, get transcripts from multiple sessions.""",
+For cross-discussion analysis, get transcripts from multiple discussions.""",
         "parameters": {
             "type": "object",
             "properties": {
-                "session_id": {
+                "discussion_id": {
                     "type": "integer",
-                    "description": "The session ID to get transcript for"
+                    "description": "The discussion ID to get transcript for"
                 },
                 "speaker_filter": {
                     "type": "string",
@@ -459,12 +459,12 @@ For cross-session analysis, get transcripts from multiple sessions.""",
                     "description": "Optional: Only get utterances containing this keyword"
                 }
             },
-            "required": ["session_id"]
+            "required": ["discussion_id"]
         }
     },
     {
         "name": "get_concept_map",
-        "description": """Get the concept map showing how ideas connect in a session.
+        "description": """Get the concept map showing how ideas connect in a discussion.
 
 Shows:
 - Nodes: ideas, questions, hypotheses, problems, solutions (with speaker attribution)
@@ -478,17 +478,17 @@ Use for:
         "parameters": {
             "type": "object",
             "properties": {
-                "session_id": {
+                "discussion_id": {
                     "type": "integer",
-                    "description": "The session ID to get concept map for"
+                    "description": "The discussion ID to get concept map for"
                 }
             },
-            "required": ["session_id"]
+            "required": ["discussion_id"]
         }
     },
     {
         "name": "get_7c_analysis",
-        "description": """Get detailed 7C collaboration analysis for a session.
+        "description": """Get detailed 7C collaboration analysis for a discussion.
 
 REQUIRED for any collaboration/quality assessment. Returns:
 - Scores (0-100) for 7 dimensions: climate, communication, contribution,
@@ -498,34 +498,34 @@ REQUIRED for any collaboration/quality assessment. Returns:
 Use for:
 - Detailed collaboration breakdown (after identifying candidates via list_sessions)
 - Finding evidence of specific collaboration behaviors
-- Comparing collaboration quality between sessions
+- Comparing collaboration quality between discussions
 
 For superlative queries: First call list_sessions to see scores, then call this
-for top 2-3 sessions to get detailed breakdown with evidence.""",
+for top 2-3 discussions to get detailed breakdown with evidence.""",
         "parameters": {
             "type": "object",
             "properties": {
-                "session_id": {
+                "discussion_id": {
                     "type": "integer",
-                    "description": "The session ID to get 7C analysis for"
+                    "description": "The discussion ID to get 7C analysis for"
                 }
             },
-            "required": ["session_id"]
+            "required": ["discussion_id"]
         }
     },
     {
         "name": "get_speaker_profile",
-        "description": """Get a speaker's engagement profile across sessions.
+        "description": """Get a speaker's engagement profile across discussions.
 
 Returns:
-- Sessions participated in
-- Per-session metrics: utterances, words, questions, LIWC scores
+- Discussions participated in
+- Per-discussion metrics: utterances, words, questions, LIWC scores
 - Concept contributions by type
 - Sample quotes showing their style
 - Interactions with other speakers via concept graph
 
 Use when asked about a specific person's engagement patterns.
-To drill into specific utterances, chain with get_transcript(session_id, speaker_filter).""",
+To drill into specific utterances, chain with get_transcript(discussion_id, speaker_filter).""",
         "parameters": {
             "type": "object",
             "properties": {
@@ -533,9 +533,9 @@ To drill into specific utterances, chain with get_transcript(session_id, speaker
                     "type": "string",
                     "description": "Speaker name (partial match supported, e.g., 'Lex' matches 'Lex Fridman')"
                 },
-                "session_id": {
+                "discussion_id": {
                     "type": "integer",
-                    "description": "Optional: limit to specific session (omit for cross-session view)"
+                    "description": "Optional: limit to specific discussion (omit for cross-discussion view)"
                 }
             },
             "required": ["speaker_name"]

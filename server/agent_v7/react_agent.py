@@ -495,10 +495,10 @@ class ScaffoldingAgent:
                             if sid:
                                 # Fetch transcript (only if not blocked by constraints)
                                 if self._should_auto_fetch('get_transcript', constraints):
-                                    transcript_result = execute_tool('get_transcript', {'session_id': sid})
+                                    transcript_result = execute_tool('get_transcript', {'discussion_id': sid})
                                     evidence.append({
                                         "tool": "get_transcript",
-                                        "params": {"session_id": sid},
+                                        "params": {"discussion_id": sid},
                                         "result": transcript_result,
                                         "auto_fetched": True
                                     })
@@ -507,10 +507,10 @@ class ScaffoldingAgent:
 
                                 # Fetch concept map (only if not blocked by constraints)
                                 if self._should_auto_fetch('get_concept_map', constraints):
-                                    concept_result = execute_tool('get_concept_map', {'session_id': sid})
+                                    concept_result = execute_tool('get_concept_map', {'discussion_id': sid})
                                     evidence.append({
                                         "tool": "get_concept_map",
-                                        "params": {"session_id": sid},
+                                        "params": {"discussion_id": sid},
                                         "result": concept_result,
                                         "auto_fetched": True
                                     })
@@ -530,12 +530,12 @@ class ScaffoldingAgent:
                         sid = sessions[0].get('session_id')
                         if sid and self._should_auto_fetch('get_transcript', constraints):
                             transcript_result = execute_tool('get_transcript', {
-                                'session_id': sid,
+                                'discussion_id': sid,
                                 'speaker_filter': speaker_alias
                             })
                             evidence.append({
                                 "tool": "get_transcript",
-                                "params": {"session_id": sid, "speaker_filter": speaker_alias},
+                                "params": {"discussion_id": sid, "speaker_filter": speaker_alias},
                                 "result": transcript_result,
                                 "auto_fetched": True
                             })
@@ -546,7 +546,7 @@ class ScaffoldingAgent:
 
                 # Record artifact retrieval in memory
                 if tool_call.name in ['get_transcript', 'get_concept_map', 'get_7c_analysis']:
-                    session_id = tool_call.params.get('session_id')
+                    session_id = tool_call.params.get('discussion_id')
                     if session_id:
                         artifact_type = tool_call.name.replace('get_', '').replace('_analysis', '')
                         self.memory.record_artifact(artifact_type, session_id)
@@ -1292,7 +1292,7 @@ Write a conversational response that guides the user through the evidence."""
             params = e.get("params", {})
 
             # Get session_id from params or result
-            session_id = params.get("session_id") or result.get("session_id")
+            session_id = params.get("discussion_id") or result.get("discussion_id")
             if session_id:
                 sessions.add(session_id)
 
@@ -1334,7 +1334,7 @@ Write a conversational response that guides the user through the evidence."""
             params = e.get("params", {})
 
             if tool == "get_7c_analysis":
-                session_id = params.get("session_id")
+                session_id = params.get("discussion_id")
                 if session_id:
                     sessions.add(session_id)
 
@@ -1711,7 +1711,7 @@ Write a conversational response that guides the user through the evidence."""
                     action_type="tool_call",
                     tool_call=ToolCall(
                         name=tool_name,
-                        params={"session_id": session_id},
+                        params={"discussion_id": session_id},
                         reason=f"Get {tool_name} for session {session_id}"
                     )
                 )
@@ -1727,7 +1727,7 @@ Write a conversational response that guides the user through the evidence."""
                     action_type="tool_call",
                     tool_call=ToolCall(
                         name=tool_name,
-                        params={"session_id": session_id} if session_id else {},
+                        params={"discussion_id": session_id} if session_id else {},
                         reason=f"Query explicitly requires {tool_name} (constraint: 'only')"
                     )
                 )
@@ -1740,7 +1740,7 @@ Write a conversational response that guides the user through the evidence."""
                 action_type="tool_call",
                 tool_call=ToolCall(
                     name=tool_name,
-                    params={"session_id": session_id},
+                    params={"discussion_id": session_id},
                     reason=f"Retrieve {tool_name} for missing session {session_id}"
                 )
             )
@@ -1787,7 +1787,7 @@ Write a conversational response that guides the user through the evidence."""
                         action_type="tool_call",
                         tool_call=ToolCall(
                             name="get_7c_analysis",
-                            params={"session_id": session_id},
+                            params={"discussion_id": session_id},
                             reason=f"Get 7C analysis for session {session_id} (need {3 - len(sessions_with_7c)} more for correlation)"
                         )
                     )
@@ -1800,7 +1800,7 @@ Write a conversational response that guides the user through the evidence."""
                 action_type="tool_call",
                 tool_call=ToolCall(
                     name=tool_name,
-                    params={"session_id": session_id},
+                    params={"discussion_id": session_id},
                     reason=f"Get {tool_name} for detailed comparison"
                 )
             )
@@ -1813,7 +1813,7 @@ Write a conversational response that guides the user through the evidence."""
                 action_type="tool_call",
                 tool_call=ToolCall(
                     name=tool_name,
-                    params={"session_id": session_id},
+                    params={"discussion_id": session_id},
                     reason=f"Get {tool_name} for search result session {session_id}"
                 )
             )
@@ -1840,12 +1840,12 @@ Write a conversational response that guides the user through the evidence."""
 
             # From get_transcript, get_concept_map, get_7c_analysis
             if tool in ('get_transcript', 'get_concept_map', 'get_7c_analysis'):
-                if 'session_id' in result:
-                    return result.get('session_id')
+                if 'discussion_id' in result:
+                    return result.get('discussion_id')
                 # Also check params
                 params = e.get('params', {})
-                if 'session_id' in params:
-                    return params.get('session_id')
+                if 'discussion_id' in params:
+                    return params.get('discussion_id')
 
         return None
 
@@ -1979,7 +1979,7 @@ Write a conversational response that guides the user through the evidence."""
             tool_name = self._select_artifact_tool(query)
             return ToolCall(
                 name=tool_name,
-                params={"session_id": session_id},
+                params={"discussion_id": session_id},
                 reason=f"Get {tool_name} for session {session_id}"
             )
 
@@ -2036,16 +2036,16 @@ Write a conversational response that guides the user through the evidence."""
             if tool == "get_transcript":
                 retrieved_types.add("transcript")
                 # session_id is still available in result metadata
-                if result.get("session_id"):
-                    retrieved_sessions.add(result.get("session_id"))
+                if result.get("discussion_id"):
+                    retrieved_sessions.add(result.get("discussion_id"))
             elif tool == "get_concept_map":
                 retrieved_types.add("concept_map")
-                if result.get("session_id"):
-                    retrieved_sessions.add(result.get("session_id"))
+                if result.get("discussion_id"):
+                    retrieved_sessions.add(result.get("discussion_id"))
             elif tool == "get_7c_analysis":
                 retrieved_types.add("7c")
-                if result.get("session_id"):
-                    retrieved_sessions.add(result.get("session_id"))
+                if result.get("discussion_id"):
+                    retrieved_sessions.add(result.get("discussion_id"))
 
         # Suggest unexplored artifacts for retrieved sessions
         if retrieved_sessions:

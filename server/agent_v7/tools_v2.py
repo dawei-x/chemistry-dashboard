@@ -93,12 +93,17 @@ def list_sessions() -> Dict[str, Any]:
     for s in sorted_sessions:
         sid = s.get('session_id', s.get('session_device_id', '?'))
         name = s.get('session_name', s.get('name', 'Unnamed'))
+        device_name = s.get('device_name', '')
         speakers = s.get('speakers', [])
         speaker_count = s.get('speaker_count', len(speakers))
         speaker_str = ", ".join(speakers[:5]) if speakers else "Unknown"
         collab_score = s.get('collaboration_score')
 
-        lines.append(f"Session {sid}: {name}")
+        # Format: Discussion ID: Session Name (Device Name)
+        if device_name:
+            lines.append(f"Discussion {sid}: {name} ({device_name})")
+        else:
+            lines.append(f"Discussion {sid}: {name}")
         lines.append(f"  Speakers ({speaker_count}): {speaker_str}")
 
         # Show collaboration score prominently
@@ -110,7 +115,7 @@ def list_sessions() -> Dict[str, Any]:
 
     # Add guidance for LLM
     lines.append("---")
-    lines.append("TIP: For detailed collaboration breakdown, call get_7c_analysis(session_id=N)")
+    lines.append("TIP: For detailed collaboration breakdown, call get_7c_analysis(discussion_id=N)")
     lines.append("TIP: For speaker contributions, call get_speaker_profile(speaker_name='Name')")
 
     return {
@@ -144,18 +149,23 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
     lines = [f"=== Search Results for \"{query}\" ({len(sessions)} found) ===\n"]
 
     if not sessions:
-        lines.append("No matching sessions found.")
+        lines.append("No matching discussions found.")
     else:
         for i, s in enumerate(sessions, 1):
             sid = s.get('session_id', s.get('session_device_id', '?'))
             name = s.get('session_name', s.get('name', 'Unnamed'))
+            device_name = s.get('device_name', '')
             # Check multiple possible score field names
             score = s.get('relevance_score') or s.get('best_match_score') or s.get('score', 0)
             speakers = s.get('speakers', [])
             speaker_str = ", ".join(speakers[:5]) if speakers else "Unknown"
             preview = s.get('match_preview', '')
 
-            lines.append(f"{i}. Session {sid}: {name}")
+            # Format: Discussion ID: Session Name (Device Name)
+            if device_name:
+                lines.append(f"{i}. Discussion {sid}: {name} ({device_name})")
+            else:
+                lines.append(f"{i}. Discussion {sid}: {name}")
             if score:
                 lines.append(f"   Relevance: {score:.2f}")
             lines.append(f"   Speakers: {speaker_str}")
@@ -177,22 +187,22 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
 
 @tool_wrapper("get_transcript")
 def get_transcript(
-    session_id: int,
+    discussion_id: int,
     speaker_filter: str = None,
     keyword_filter: str = None
 ) -> Dict[str, Any]:
     """
-    Get transcript for a session in human-readable format.
+    Get transcript for a discussion in human-readable format.
 
     Args:
-        session_id: Session to get transcript for
+        discussion_id: Discussion to get transcript for
         speaker_filter: Optional - only get utterances from this speaker
         keyword_filter: Optional - only get utterances containing this keyword
 
     Returns:
         Dict with 'display' containing LLM-ready formatted transcript
     """
-    result = _get_artifacts(session_id, include=['transcript'])
+    result = _get_artifacts(discussion_id, include=['transcript'])
 
     if result.get('error'):
         return {
@@ -203,7 +213,7 @@ def get_transcript(
     artifacts = result.get('artifacts', {})
     transcript = artifacts.get('transcript', {})
 
-    session_name = result.get('session_name', f'Session {session_id}')
+    session_name = result.get('session_name', f'Discussion {discussion_id}')
     device_name = result.get('device_name', '')
 
     utterances = transcript.get('utterances', [])
@@ -223,11 +233,11 @@ def get_transcript(
             if keyword_lower in u.get('text', '').lower()
         ]
 
-    # Build LLM-ready text
+    # Build LLM-ready text - include device name in title
+    title = f"{session_name} ({device_name})" if device_name else session_name
     lines = [
-        f"=== Transcript: {session_name} ===",
-        f"Session ID: {session_id}",
-        f"Device: {device_name}",
+        f"=== Transcript: {title} ===",
+        f"Discussion ID: {discussion_id}",
     ]
 
     if speaker_filter:
@@ -257,7 +267,7 @@ def get_transcript(
 
     return {
         "display": "\n".join(lines),
-        "session_id": session_id,
+        "discussion_id": discussion_id,
         "session_name": session_name,
         "utterance_count": len(utterances),
         "utterances": utterances,  # Structured data for programmatic use
@@ -269,17 +279,17 @@ def get_transcript(
 # =============================================================================
 
 @tool_wrapper("get_concept_map")
-def get_concept_map(session_id: int) -> Dict[str, Any]:
+def get_concept_map(discussion_id: int) -> Dict[str, Any]:
     """
-    Get concept map for a session showing ideas and their connections.
+    Get concept map for a discussion showing ideas and their connections.
 
     Args:
-        session_id: Session to get concept map for
+        discussion_id: Discussion to get concept map for
 
     Returns:
         Dict with 'display' containing LLM-ready concept map text
     """
-    result = _get_artifacts(session_id, include=['concept_map'])
+    result = _get_artifacts(discussion_id, include=['concept_map'])
 
     if result.get('error'):
         return {
@@ -290,13 +300,13 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
     artifacts = result.get('artifacts', {})
     concept_map = artifacts.get('concept_map', {})
 
-    session_name = result.get('session_name', f'Session {session_id}')
+    session_name = result.get('session_name', f'Discussion {discussion_id}')
     device_name = result.get('device_name', '')
 
     if not concept_map.get('available', False):
         return {
             "display": f"No concept map available for {session_name}",
-            "session_id": session_id,
+            "discussion_id": discussion_id,
             "available": False,
         }
 
@@ -330,11 +340,11 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
         text = node.get('text', '')
         return f"[{node_type}] {speaker}: \"{text}\""
 
-    # Build LLM-ready text
+    # Build LLM-ready text - include device name in title
+    title = f"{session_name} ({device_name})" if device_name else session_name
     lines = [
-        f"=== Concept Map: {session_name} ===",
-        f"Session ID: {session_id}",
-        f"Device: {device_name}",
+        f"=== Concept Map: {title} ===",
+        f"Discussion ID: {discussion_id}",
         f"Total Nodes: {summary.get('total_nodes', len(nodes))}",
         f"Total Edges: {summary.get('total_edges', len(edges))}",
     ]
@@ -388,7 +398,7 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
 
     return {
         "display": "\n".join(lines),
-        "session_id": session_id,
+        "discussion_id": discussion_id,
         "session_name": session_name,
         "node_count": len(nodes),
         "edge_count": len(edges),
@@ -403,7 +413,7 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
 # =============================================================================
 
 @tool_wrapper("get_7c_analysis")
-def get_7c_analysis(session_id: int) -> Dict[str, Any]:
+def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
     """
     Get 7C collaboration analysis with scores and evidence.
 
@@ -412,12 +422,12 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
     (actual quotes demonstrating the dimension).
 
     Args:
-        session_id: Session to get analysis for
+        discussion_id: Discussion to get analysis for
 
     Returns:
         Dict with 'display' containing LLM-ready 7C analysis
     """
-    result = _get_artifacts(session_id, include=['collaboration'])
+    result = _get_artifacts(discussion_id, include=['collaboration'])
 
     if result.get('error'):
         return {
@@ -428,13 +438,13 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
     artifacts = result.get('artifacts', {})
     collaboration = artifacts.get('collaboration', {})
 
-    session_name = result.get('session_name', f'Session {session_id}')
+    session_name = result.get('session_name', f'Discussion {discussion_id}')
     device_name = result.get('device_name', '')
 
     if not collaboration.get('available', False):
         return {
             "display": f"No 7C analysis available for {session_name}",
-            "session_id": session_id,
+            "discussion_id": discussion_id,
             "available": False,
         }
 
@@ -444,11 +454,11 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
     scores = [d.get('score', 0) for d in raw_dimensions.values() if d.get('score')]
     overall_score = sum(scores) / len(scores) if scores else 0
 
-    # Build LLM-ready text
+    # Build LLM-ready text - include device name in title
+    title = f"{session_name} ({device_name})" if device_name else session_name
     lines = [
-        f"=== 7C Collaboration Analysis: {session_name} ===",
-        f"Session ID: {session_id}",
-        f"Device: {device_name}",
+        f"=== 7C Collaboration Analysis: {title} ===",
+        f"Discussion ID: {discussion_id}",
         f"Overall Score: {overall_score:.1f}/100",
         "",
         "The 7C Framework measures collaboration quality across 7 dimensions.",
@@ -492,7 +502,7 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
 
     return {
         "display": "\n".join(lines),
-        "session_id": session_id,
+        "discussion_id": discussion_id,
         "session_name": session_name,
         "overall_score": overall_score,
         "dimensions": raw_dimensions,  # Structured data for programmatic use
@@ -515,22 +525,22 @@ def _get_db_connection():
 
 
 @tool_wrapper("get_speaker_profile")
-def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> Dict[str, Any]:
+def get_speaker_profile(speaker_name: str, discussion_id: Optional[int] = None) -> Dict[str, Any]:
     """
-    Get a speaker's engagement profile across sessions.
+    Get a speaker's engagement profile across discussions.
 
     Returns:
-    - Sessions participated (enables chaining to get_transcript)
-    - Per-session metrics (utterances, words, questions, analytic/certainty scores)
+    - Discussions participated (enables chaining to get_transcript)
+    - Per-discussion metrics (utterances, words, questions, analytic/certainty scores)
     - Sample quotes (diverse selection: questions, high-certainty, high-analytic)
     - Concept contributions by type
     - Connections to other speakers via concepts
 
-    For full transcript, use get_transcript(session_id, speaker_filter=name).
+    For full transcript, use get_transcript(discussion_id, speaker_filter=name).
 
     Args:
         speaker_name: Name of the speaker (partial match supported)
-        session_id: Optional - limit to specific session (None = all sessions)
+        discussion_id: Optional - limit to specific discussion (None = all discussions)
 
     Returns:
         Dict with 'display' containing LLM-ready speaker profile
@@ -557,9 +567,9 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
         speaker_alias = speakers[0]['alias']
         speaker_id_list = ', '.join(str(sid) for sid in speaker_ids)
 
-        # Session filters
-        session_filter = f"AND t.session_device_id = {session_id}" if session_id else ""
-        session_filter_unaliased = f"AND session_device_id = {session_id}" if session_id else ""
+        # Discussion filters (discussion_id maps to session_device_id internally)
+        session_filter = f"AND t.session_device_id = {discussion_id}" if discussion_id else ""
+        session_filter_unaliased = f"AND session_device_id = {discussion_id}" if discussion_id else ""
 
         # Get participation by session (across ALL speaker IDs)
         cursor.execute(f"""
@@ -595,7 +605,7 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
             row['expected_equal_share_pct'] = round(100.0 / speaker_count, 1) if speaker_count > 0 else 100
 
         # Get concept contributions (across ALL speaker IDs)
-        session_concept_filter = f"AND cs.session_device_id = {session_id}" if session_id else ""
+        session_concept_filter = f"AND cs.session_device_id = {discussion_id}" if discussion_id else ""
         cursor.execute(f"""
             SELECT
                 cn.node_type,
@@ -696,25 +706,25 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
         # Build LLM-ready display
         lines = [
             f"=== Speaker Profile: {speaker_alias} ===",
-            f"Scope: {'Session ' + str(session_id) if session_id else 'All sessions'}",
+            f"Scope: {'Discussion ' + str(discussion_id) if discussion_id else 'All discussions'}",
             "",
         ]
 
-        # Sessions participated
+        # Discussions participated
         total_utterances = sum(d['utterance_count'] for d in session_data)
         total_words = sum(d['word_count'] or 0 for d in session_data)
         total_questions = sum(d['questions'] or 0 for d in session_data)
 
         lines.append(f"--- Participation Summary ---")
-        lines.append(f"Sessions: {len(session_data)}")
+        lines.append(f"Discussions: {len(session_data)}")
         lines.append(f"Total utterances: {total_utterances}")
         lines.append(f"Total words: {total_words}")
         lines.append(f"Questions asked: {total_questions}")
         lines.append("")
 
-        lines.append(f"--- By Session (with comparative metrics) ---")
+        lines.append(f"--- By Discussion (with comparative metrics) ---")
         for sd in session_data:
-            lines.append(f"Session {sd['session_device_id']}: {sd['session_name']}")
+            lines.append(f"Discussion {sd['session_device_id']}: {sd['session_name']}")
             lines.append(f"  Utterances: {sd['utterance_count']}, Questions: {sd['questions'] or 0}")
             # Comparative metrics for LLM to interpret
             lines.append(f"  Participation: {sd.get('participation_share_pct', 0)}% of session (equal share would be {sd.get('expected_equal_share_pct', 0)}%)")
@@ -764,16 +774,16 @@ def get_speaker_profile(speaker_name: str, session_id: Optional[int] = None) -> 
 
         lines.append("")
         lines.append("--- Next Steps ---")
-        lines.append(f"To see {speaker_alias}'s actual utterances in a session, use:")
-        lines.append(f"  get_transcript(session_id=N, speaker_filter='{speaker_alias}')")
+        lines.append(f"To see {speaker_alias}'s actual utterances in a discussion, use:")
+        lines.append(f"  get_transcript(discussion_id=N, speaker_filter='{speaker_alias}')")
         lines.append("")
         lines.append("=== End Speaker Profile ===")
 
         return {
             "display": "\n".join(lines),
             "speaker_alias": speaker_alias,
-            "speaker_ids": speaker_ids,  # List of all speaker IDs (one per session)
-            "sessions": [{"session_id": d['session_device_id'], "session_name": d['session_name']} for d in session_data],
+            "speaker_ids": speaker_ids,  # List of all speaker IDs (one per discussion)
+            "discussions": [{"discussion_id": d['session_device_id'], "session_name": d['session_name']} for d in session_data],
             "found": True,
         }
 
@@ -855,15 +865,15 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_transcript",
-            "description": "Get session transcript with speaker names and timestamps. Use for quotes, content analysis, and verifying claims.",
+            "description": "Get discussion transcript with speaker names and timestamps. Use for quotes, content analysis, and verifying claims.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "session_id": {"type": "integer", "description": "Session ID"},
+                    "discussion_id": {"type": "integer", "description": "Discussion ID"},
                     "speaker_filter": {"type": "string", "description": "Filter by speaker"},
                     "keyword_filter": {"type": "string", "description": "Filter by keyword"}
                 },
-                "required": ["session_id"]
+                "required": ["discussion_id"]
             }
         }
     },
@@ -875,9 +885,9 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "session_id": {"type": "integer", "description": "Session ID"}
+                    "discussion_id": {"type": "integer", "description": "Discussion ID"}
                 },
-                "required": ["session_id"]
+                "required": ["discussion_id"]
             }
         }
     },
@@ -889,9 +899,9 @@ TOOL_SCHEMAS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "session_id": {"type": "integer", "description": "Session ID"}
+                    "discussion_id": {"type": "integer", "description": "Discussion ID"}
                 },
-                "required": ["session_id"]
+                "required": ["discussion_id"]
             }
         }
     },
@@ -899,12 +909,12 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "get_speaker_profile",
-            "description": "Get speaker's engagement profile: sessions, metrics, concept contributions, interactions. Chain with get_transcript for specific utterances.",
+            "description": "Get speaker's engagement profile: discussions, metrics, concept contributions, interactions. Chain with get_transcript for specific utterances.",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "speaker_name": {"type": "string", "description": "Speaker name (partial match supported)"},
-                    "session_id": {"type": "integer", "description": "Optional: limit to specific session"}
+                    "discussion_id": {"type": "integer", "description": "Optional: limit to specific discussion"}
                 },
                 "required": ["speaker_name"]
             }
