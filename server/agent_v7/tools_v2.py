@@ -162,12 +162,13 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
             preview = s.get('match_preview', '')
 
             # Format: Discussion ID: Session Name (Device Name)
+            # Note: Relevance scores intentionally omitted - all returned sessions
+            # passed the search threshold, so they're all worth retrieving.
+            # Showing scores would cause the decision LLM to over-optimize.
             if device_name:
                 lines.append(f"{i}. Discussion {sid}: {name} ({device_name})")
             else:
                 lines.append(f"{i}. Discussion {sid}: {name}")
-            if score:
-                lines.append(f"   Relevance: {score:.2f}")
             lines.append(f"   Speakers: {speaker_str}")
             if preview:
                 lines.append(f"   Preview: {preview}")

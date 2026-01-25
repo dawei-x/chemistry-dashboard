@@ -251,11 +251,12 @@ def _extract_citations(evidence: list) -> list:
 
         elif tool == 'get_7c_analysis':
             discussion_id = result.get('discussion_id')
-            summary = result.get('summary', {})
+            # overall_score is at top level, not in summary
+            overall_score = result.get('overall_score')
             citations.append({
                 'type': 'collaboration',
                 'discussion_id': discussion_id,
-                'overall_score': summary.get('overall_score')
+                'overall_score': overall_score
             })
 
     return citations

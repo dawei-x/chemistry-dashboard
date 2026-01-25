@@ -484,65 +484,8 @@ class ScaffoldingAgent:
                 })
                 tool_calls_made.append(tool_call)
 
-                # Auto-fetch artifacts for discovered sessions (like RAG Discovery)
-                # CONSTRAINT-AWARE: Check constraints before auto-fetching
-                if tool_call.name == 'search_sessions':
-                    sessions = result.get('sessions', [])
-                    if sessions:
-                        logger.info(f"[Agent] Auto-fetching artifacts for {len(sessions)} discovered sessions")
-                        for s in sessions:  # Include all sessions returned by similarity search
-                            sid = s.get('session_id')
-                            if sid:
-                                # Fetch transcript (only if not blocked by constraints)
-                                if self._should_auto_fetch('get_transcript', constraints):
-                                    transcript_result = execute_tool('get_transcript', {'discussion_id': sid})
-                                    evidence.append({
-                                        "tool": "get_transcript",
-                                        "params": {"discussion_id": sid},
-                                        "result": transcript_result,
-                                        "auto_fetched": True
-                                    })
-                                    self.memory.record_artifact('transcript', sid)
-                                    logger.info(f"[Agent] Auto-fetched transcript for session {sid}")
-
-                                # Fetch concept map (only if not blocked by constraints)
-                                if self._should_auto_fetch('get_concept_map', constraints):
-                                    concept_result = execute_tool('get_concept_map', {'discussion_id': sid})
-                                    evidence.append({
-                                        "tool": "get_concept_map",
-                                        "params": {"discussion_id": sid},
-                                        "result": concept_result,
-                                        "auto_fetched": True
-                                    })
-                                    self.memory.record_artifact('concept_map', sid)
-                                    logger.info(f"[Agent] Auto-fetched concept_map for session {sid}")
-
-                                if not self.memory.session_focus:
-                                    self.memory.update_session_focus(sid)
-
-                # Auto-fetch transcript for speaker's session(s) after get_speaker_profile
-                # CONSTRAINT-AWARE: Check constraints before auto-fetching
-                if tool_call.name == 'get_speaker_profile':
-                    sessions = result.get('sessions', [])
-                    speaker_alias = result.get('speaker_alias', tool_call.params.get('speaker_name'))
-                    if sessions and speaker_alias:
-                        # Get transcript filtered by this speaker for first session (if not blocked)
-                        sid = sessions[0].get('session_id')
-                        if sid and self._should_auto_fetch('get_transcript', constraints):
-                            transcript_result = execute_tool('get_transcript', {
-                                'discussion_id': sid,
-                                'speaker_filter': speaker_alias
-                            })
-                            evidence.append({
-                                "tool": "get_transcript",
-                                "params": {"discussion_id": sid, "speaker_filter": speaker_alias},
-                                "result": transcript_result,
-                                "auto_fetched": True
-                            })
-                            self.memory.record_artifact('transcript', sid)
-                            if not self.memory.session_focus:
-                                self.memory.update_session_focus(sid)
-                            logger.info(f"[Agent] Auto-fetched transcript for speaker '{speaker_alias}' in session {sid}")
+                # TRUE REACT: No auto-fetch - LLM decides what to fetch next
+                # The system prompt guides the LLM to fetch artifacts after discovery tools
 
                 # Record artifact retrieval in memory
                 if tool_call.name in ['get_transcript', 'get_concept_map', 'get_7c_analysis']:
@@ -779,15 +722,34 @@ class ScaffoldingAgent:
 Evidence gathered so far:
 {evidence_str if evidence_str else "None yet"}
 
-Decide your next action:
-- If you have enough evidence to answer the query thoroughly with specific citations, respond now.
-- If you need more information, call an appropriate tool.
+Before deciding your action, reason about:
+1. What evidence do I have?
+2. What evidence do I still need for a complete answer?
+3. What should I do next?
 
-Respond with either:
-1. RESPOND: [your response]
-2. TOOL: tool_name
-   PARAMS: {{"param": "value"}}
-   REASON: why this tool helps"""
+Use this format:
+
+THOUGHT: [Your reasoning about evidence, gaps, and next step]
+ACTION: respond
+RESPONSE: [Your complete answer with citations]
+
+OR
+
+THOUGHT: [Your reasoning about evidence, gaps, and next step]
+ACTION: tool_call
+TOOL: [tool_name]
+PARAMS: {{"param": "value"}}
+
+IMPORTANT: Make ONE tool call at a time. If you need data from multiple sessions,
+call the tool once, then in the next turn call it again for the next session.
+Use the actual tool name like "get_7c_analysis" or "list_sessions", not wrapper names.
+
+Examples of good THOUGHT traces:
+- "I have list_sessions results showing 10 sessions. The user asked for the best collaboration. I need 7C details from top 2-3 sessions before I can justify which is best."
+- "I have 7C analysis for session 19 (Is AI Alive) but the user asked to compare with Nuclear Fusion (session 20). I must get 7C for session 20 before comparing."
+- "I have speaker profile for Tucker showing participation stats, but no actual quotes. I should fetch transcript filtered by speaker to get his words."
+- "I have detailed evidence from both sessions the user asked about. I can now provide a complete comparison with specific citations."
+"""
 
         messages = [
             {"role": "system", "content": system_prompt},
@@ -831,39 +793,65 @@ Respond with either:
                         )
                     )
 
-            # Otherwise, LLM wants to respond
+            # Otherwise, parse LLM's text response
             content = response.content
 
-            # Parse text response for action
+            # =================================================================
+            # TRUE REACT: Parse THOUGHT → ACTION format
+            # The LLM's decision is FINAL - no code override
+            # =================================================================
+            thought, action_type, action_content = self._parse_react_format(content)
+
+            # Log the THOUGHT trace for debugging/observability
+            if thought:
+                logger.info(f"[Agent] THOUGHT: {thought[:300]}...")
+
+            # Handle parsed action
+            if action_type == "respond":
+                logger.info(f"[Agent] LLM decided to respond (THOUGHT-informed)")
+                return AgentAction(
+                    action_type="respond",
+                    response=action_content or ""
+                )
+
+            elif action_type == "tool_call":
+                # Parse tool call from action content
+                tool_call = self._parse_tool_call_from_text(action_content)
+                if tool_call:
+                    # Check if the parsed tool name is valid
+                    valid_tool_names = get_tool_names()
+                    if tool_call.name in valid_tool_names:
+                        return AgentAction(
+                            action_type="tool_call",
+                            tool_call=tool_call
+                        )
+                    else:
+                        # Invalid tool name (e.g., "parallel" from multi_tool_use.parallel)
+                        # Fall through to default tool selection
+                        logger.warning(f"[Agent] Invalid tool name parsed: {tool_call.name}. Will use default.")
+                else:
+                    logger.warning(f"[Agent] action_type=tool_call but failed to parse: {action_content[:200] if action_content else 'None'}")
+
+            # Fallback: Try legacy formats for backwards compatibility
+            # (RESPOND: or TOOL: without THOUGHT)
             if content.strip().upper().startswith("RESPOND:"):
-                # LLM wants to respond - but first check if we have enough data
-                # for comparison/superlative queries
-                if evidence:
-                    analysis = self._analyze_query_completeness(query, evidence)
-                    if not analysis['complete']:
-                        logger.info(f"[Agent] LLM wants to respond but data incomplete: "
-                                   f"is_comparison={analysis.get('is_comparison')}, "
-                                   f"is_superlative={analysis.get('is_superlative')}, "
-                                   f"missing={analysis.get('missing_sessions', set())}")
-                        return self._create_retrieval_action_for_missing(analysis, query)
+                logger.info(f"[Agent] Legacy RESPOND format detected")
                 return AgentAction(
                     action_type="respond",
                     response=content[8:].strip()
                 )
             elif "TOOL:" in content.upper():
-                # Parse manual tool call format
                 tool_call = self._parse_tool_call_from_text(content)
                 if tool_call:
+                    logger.info(f"[Agent] Legacy TOOL format detected")
                     return AgentAction(
                         action_type="tool_call",
                         tool_call=tool_call
                     )
 
-            # Fix: Handle "Please hold on while I retrieve..." pattern
-            # LLM intended to make a tool call but didn't format it properly
+            # Handle "Please hold on while I retrieve..." pattern
             if self._mentions_retrieval_intent(content):
-                logger.warning(f"[Agent] Detected retrieval intent without tool call: {content[:100]}...")
-                # Force a default tool call instead of falling through to respond
+                logger.warning(f"[Agent] Detected retrieval intent without proper format: {content[:100]}...")
                 default_tool = self._get_default_tool_call(query)
                 if default_tool:
                     return AgentAction(
@@ -871,23 +859,11 @@ Respond with either:
                         tool_call=default_tool
                     )
 
-            # Query-aware response gating:
-            # For comparison/superlative queries, check if we have sufficient data
+            # No valid action parsed - if we have evidence, respond; else get default tool
             if evidence:
-                analysis = self._analyze_query_completeness(query, evidence)
-
-                if analysis['complete']:
-                    logger.info(f"[Agent] Query analysis: complete=True, responding")
-                    return AgentAction(action_type="respond")
-                else:
-                    # Need more data - force retrieval for missing sessions
-                    logger.info(f"[Agent] Query analysis: complete=False, "
-                               f"missing={analysis.get('missing_sessions', set())}, "
-                               f"is_comparison={analysis.get('is_comparison')}, "
-                               f"is_superlative={analysis.get('is_superlative')}")
-                    return self._create_retrieval_action_for_missing(analysis, query)
+                logger.info(f"[Agent] No valid action parsed, responding with available evidence")
+                return AgentAction(action_type="respond")
             else:
-                # No evidence yet - try to determine a sensible first tool call
                 default_tool = self._get_default_tool_call(query)
                 if default_tool:
                     return AgentAction(
@@ -959,17 +935,25 @@ Write a conversational response that guides the user through the evidence."""
             return self._fallback_response(query, evidence)
 
     def _format_evidence_for_context(self, evidence: List[Dict]) -> str:
-        """Format evidence for decision-making context (concise summary).
+        """Format evidence for decision-making context.
 
-        Uses the 'display' field from tool results but shows only first few lines
-        for quick decision-making.
+        Tool-type-aware formatting:
+        - Discovery tools (list_sessions, search_sessions, get_speaker_profile):
+          Full display to ensure all sessions/entities are visible for decision-making
+        - Detail tools (get_transcript, get_concept_map, get_7c_analysis):
+          Structured summary with key metadata (saves tokens, signals "data retrieved")
         """
         if not evidence:
             return ""
 
+        # Discovery tools need full visibility for decision-making
+        DISCOVERY_TOOLS = {'list_sessions', 'search_sessions', 'get_speaker_profile'}
+
         lines = []
         for e in evidence[-MAX_EVIDENCE_ITEMS:]:
             if e.get("type") == "steering_block":
+                lines.append(f"[BLOCKED] {e.get('tool')}: {e.get('reason')}")
+            elif e.get("type") == "constraint_block":
                 lines.append(f"[BLOCKED] {e.get('tool')}: {e.get('reason')}")
             else:
                 tool = e.get("tool", "unknown")
@@ -977,17 +961,74 @@ Write a conversational response that guides the user through the evidence."""
 
                 if result.get("error"):
                     lines.append(f"[{tool}] Error: {result.get('error')}")
-                else:
-                    # Show first 10 lines of display as summary
+                elif tool in DISCOVERY_TOOLS:
+                    # Discovery tools: show full display (no truncation)
+                    # Use pipe-joined format like original for consistency
                     display = result.get("display", "")
                     if display:
-                        summary_lines = display.split("\n")[:10]
-                        summary = " | ".join(line.strip() for line in summary_lines if line.strip())
+                        display_lines = display.split("\n")
+                        summary = " | ".join(line.strip() for line in display_lines if line.strip())
                         lines.append(f"[{tool}] {summary}")
                     else:
                         lines.append(f"[{tool}] Completed")
+                else:
+                    # Detail tools: structured summary from metadata
+                    summary = self._build_detail_summary(tool, result)
+                    lines.append(f"[{tool}] {summary}")
 
         return "\n".join(lines)
+
+    def _build_detail_summary(self, tool: str, result: Dict) -> str:
+        """Build a structured summary for detail tools.
+
+        Extracts key metadata to signal "data retrieved" without full content.
+        Includes discussion_id, session_name, device_name, and tool-specific metrics.
+        """
+        discussion_id = result.get("discussion_id", "?")
+        session_name = result.get("session_name", "")
+        device_name = result.get("device_name", "")
+
+        # Build title with session and device info
+        if device_name:
+            title = f'Discussion {discussion_id} "{session_name}" (Device: {device_name})'
+        elif session_name:
+            title = f'Discussion {discussion_id} "{session_name}"'
+        else:
+            title = f'Discussion {discussion_id}'
+
+        # Tool-specific metrics
+        if tool == "get_transcript":
+            utterance_count = result.get("utterance_count", 0)
+            return f"{title}: {utterance_count} utterances"
+
+        elif tool == "get_concept_map":
+            node_count = result.get("node_count", 0)
+            edge_count = result.get("edge_count", 0)
+            if not result.get("available", True):
+                return f"{title}: No concept map available"
+            return f"{title}: {node_count} nodes, {edge_count} edges"
+
+        elif tool == "get_7c_analysis":
+            if not result.get("available", True):
+                return f"{title}: No 7C analysis available"
+            overall_score = result.get("overall_score", 0)
+            dimensions = result.get("dimensions", {})
+
+            # Find highest and lowest dimensions
+            if dimensions:
+                dim_scores = [(name, data.get("score", 0)) for name, data in dimensions.items()]
+                dim_scores.sort(key=lambda x: x[1], reverse=True)
+                highest = dim_scores[0] if dim_scores else ("?", 0)
+                lowest = dim_scores[-1] if dim_scores else ("?", 0)
+                return (f"{title}: {overall_score:.1f}/100 overall "
+                        f"(highest: {highest[0].capitalize()} {highest[1]}, "
+                        f"lowest: {lowest[0].capitalize()} {lowest[1]})")
+            else:
+                return f"{title}: {overall_score:.1f}/100 overall"
+
+        else:
+            # Unknown tool - fall back to simple completion message
+            return f"{title}: Retrieved"
 
     def _format_evidence_for_synthesis(self, evidence: List[Dict]) -> str:
         """Format evidence for synthesis (detailed).
@@ -1892,11 +1933,15 @@ Write a conversational response that guides the user through the evidence."""
         """Parse a tool call from text format."""
 
         # Look for TOOL: name pattern
-        tool_match = re.search(r'TOOL:\s*(\w+)', text, re.IGNORECASE)
+        # Handle both "TOOL: list_sessions" and "TOOL: functions.list_sessions"
+        tool_match = re.search(r'TOOL:\s*([\w.]+)', text, re.IGNORECASE)
         if not tool_match:
             return None
 
         tool_name = tool_match.group(1)
+        # If the tool name has a dot (e.g., "functions.list_sessions"), take the last part
+        if '.' in tool_name:
+            tool_name = tool_name.split('.')[-1]
 
         # Look for PARAMS: {json} pattern
         params = {}
@@ -1914,6 +1959,55 @@ Write a conversational response that guides the user through the evidence."""
             reason = reason_match.group(1).strip()
 
         return ToolCall(name=tool_name, params=params, reason=reason)
+
+    def _parse_react_format(self, content: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+        """
+        Parse ReAct format: THOUGHT: ... ACTION: (respond|tool_call) ...
+
+        This is the core parsing for the true ReAct agent pattern.
+        The LLM must provide explicit reasoning before each action.
+
+        Returns:
+            Tuple of (thought, action_type, action_content)
+            - thought: The reasoning trace (what evidence we have, what we need)
+            - action_type: "respond" or "tool_call"
+            - action_content: The response text or tool specification
+        """
+        thought = None
+        action_type = None
+        action_content = None
+
+        # Extract THOUGHT (everything between THOUGHT: and ACTION:)
+        thought_match = re.search(
+            r'THOUGHT:\s*(.+?)(?=ACTION:|$)',
+            content,
+            re.IGNORECASE | re.DOTALL
+        )
+        if thought_match:
+            thought = thought_match.group(1).strip()
+
+        # Extract ACTION type and content
+        # Look for ACTION: respond or ACTION: tool_call
+        action_match = re.search(
+            r'ACTION:\s*(respond|tool_call)\s*(.+)',
+            content,
+            re.IGNORECASE | re.DOTALL
+        )
+        if action_match:
+            action_type = action_match.group(1).lower()
+            action_content = action_match.group(2).strip()
+
+            # For respond, extract the RESPONSE: content if present
+            if action_type == "respond":
+                response_match = re.search(
+                    r'RESPONSE:\s*(.+)',
+                    action_content,
+                    re.IGNORECASE | re.DOTALL
+                )
+                if response_match:
+                    action_content = response_match.group(1).strip()
+
+        return thought, action_type, action_content
 
     def _get_default_tool_call(self, query: str) -> Optional[ToolCall]:
         """

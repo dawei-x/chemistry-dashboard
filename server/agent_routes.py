@@ -111,8 +111,6 @@ def list_conversations():
 
     Query params:
     - limit: Max number of conversations (default 20)
-    - variant: Filter by variant ('baseline' for baseline conversations,
-               null/missing for full agent conversations)
 
     Response:
     {
@@ -129,26 +127,14 @@ def list_conversations():
     """
     try:
         limit = request.args.get('limit', 1000, type=int)  # Show all conversations by default
-        variant = request.args.get('variant', None)  # 'baseline' or None
 
         from agent import get_orchestrator
         orchestrator = get_orchestrator()
 
         conversations = orchestrator.list_conversations(
             user_id=g.user_id,
-            limit=limit * 2  # Fetch extra to allow for filtering
+            limit=limit
         )
-
-        # Filter by variant based on title prefix
-        if variant == 'baseline':
-            # Only show baseline conversations (title starts with [Baseline])
-            conversations = [c for c in conversations if c.get('title', '').startswith('[Baseline]')]
-        else:
-            # Only show full agent conversations (title does NOT start with [Baseline])
-            conversations = [c for c in conversations if not c.get('title', '').startswith('[Baseline]')]
-
-        # Apply limit after filtering
-        conversations = conversations[:limit]
 
         return jsonify({'conversations': conversations})
 
