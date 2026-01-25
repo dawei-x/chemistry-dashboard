@@ -665,6 +665,8 @@
   background-color: #FCFDFF;
   -ms-flex-item-align: start;
       align-self: flex-start;
+  position: relative;  /* Required for absolutely positioned utterances */
+  overflow: hidden;    /* Prevent utterances from escaping bounds */
 }
 
 .utterance {

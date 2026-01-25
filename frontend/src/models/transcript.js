@@ -1,5 +1,3 @@
-import { KeywordUsageModel } from "./keyword-usage";
-
 export class TranscriptModel {
   // Server Fields
   id;
@@ -15,7 +13,6 @@ export class TranscriptModel {
   clout_value;
   authenticity_value;
   certainty_value;
-  keywords;
   speaker_tag;
   topic_id;
   speaker_id;
@@ -39,8 +36,6 @@ export class TranscriptModel {
     model.speaker_tag = json["speaker_tag"];
     model.topic_id = json["topic_id"];
     model.speaker_id = json["speaker_id"];
-    model.keywords = KeywordUsageModel.fromJsonList(json["keywords"]);
-    model.keywords.forEach((k) => (k.transcript_id = model.id));
     model.speaker_metrics = speaker_metrics;
     return model;
   }

@@ -92,8 +92,8 @@ function DiscussionPulsePanel({ sessionDeviceId, isSessionActive, isCollapsed, o
   if (isCollapsed) {
     return (
       <div className={style.collapsedPanel} onClick={onToggleCollapse}>
-        <span className={style.collapsedIcon}>...</span>
-        <span className={style.collapsedLabel}>Discussion Pulse</span>
+        <span className={style.collapsedIcon}>•••</span>
+        <span className={style.collapsedLabel}>Discussion<br/>Pulse</span>
         {pulses.length > 0 && (
           <span className={style.badge}>{pulses.length}</span>
         )}

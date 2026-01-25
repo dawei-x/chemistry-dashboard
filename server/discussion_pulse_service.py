@@ -21,7 +21,7 @@ api_key = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=api_key) if api_key else None
 
 # Default time window for pulse generation (seconds)
-DEFAULT_WINDOW_SECONDS = 50
+DEFAULT_WINDOW_SECONDS = 45
 
 
 def generate_pulse_for_window(session_device_id, start_time, end_time, transcripts):
@@ -119,9 +119,11 @@ def generate_next_pulse(session_device_id, window_seconds=DEFAULT_WINDOW_SECONDS
     Returns:
         DiscussionPulse object if successful, None if no new content
     """
+    logging.info(f"[PULSE] generate_next_pulse called for session_device {session_device_id}")
     try:
         # Get the last pulse end time
         last_end = get_latest_pulse_time(session_device_id)
+        logging.info(f"[PULSE] Last pulse end time: {last_end}")
 
         # Get new transcripts since last pulse
         transcripts = db_helper.get_transcripts(
@@ -132,6 +134,7 @@ def generate_next_pulse(session_device_id, window_seconds=DEFAULT_WINDOW_SECONDS
         new_transcripts = [t for t in transcripts if t.start_time >= last_end]
 
         if not new_transcripts:
+            logging.info(f"[PULSE] No new transcripts for session_device {session_device_id}")
             return None
 
         # Determine the time range
@@ -146,6 +149,7 @@ def generate_next_pulse(session_device_id, window_seconds=DEFAULT_WINDOW_SECONDS
         # Only generate if we have at least 20 seconds of content
         # (40% of window size to allow faster first pulse)
         if max_time - start_time < window_seconds * 0.4:  # 20 seconds minimum
+            logging.info(f"[PULSE] Insufficient content duration: {max_time - start_time:.1f}s < {window_seconds * 0.4:.1f}s for session_device {session_device_id}")
             return None
 
         end_time = min(start_time + window_seconds, max_time)

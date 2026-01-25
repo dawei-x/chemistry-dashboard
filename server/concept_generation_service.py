@@ -104,9 +104,11 @@ def generate_concepts_for_session_device(session_device_id):
             resolved_speaker_id = None
             if speaker_id:
                 if isinstance(speaker_id, int):
-                    resolved_speaker_id = speaker_id
-                elif str(speaker_id).isdigit():
-                    resolved_speaker_id = int(speaker_id)
+                    # Only use valid positive speaker IDs (skip -1 or other invalid IDs)
+                    resolved_speaker_id = speaker_id if speaker_id > 0 else None
+                elif str(speaker_id).lstrip('-').isdigit():
+                    parsed_id = int(speaker_id)
+                    resolved_speaker_id = parsed_id if parsed_id > 0 else None
                 elif isinstance(speaker_id, str) and speaker_id in speaker_name_to_id:
                     # LLM returned speaker name (e.g., "Alice") - resolve to database ID
                     resolved_speaker_id = speaker_name_to_id[speaker_id]

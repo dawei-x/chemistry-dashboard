@@ -5,17 +5,21 @@ import { adjDim } from "../myhooks/custom-hooks";
 import React, { useMemo, useState, useEffect, useRef } from "react";
 
 function FeaturePage(props) {
-  // Only show device picker for Group mode with multi-session
-  const showDevicePicker = props.isMulti && props.mode === 'Group';
-  
+  // Only show device picker for Group mode with multi-session (unless hidden by parent)
+  const showDevicePicker = props.isMulti && props.mode === 'Group' && !props.hideSessionPicker;
+
+  // Check if we're in multi-session mode (for data processing, separate from UI)
+  const isMultiSessionMode = props.isMulti && props.mode === 'Group';
+
   // === selection state (pending before Apply) - only for multi-session ===
+  // Note: appliedIds is used for data filtering regardless of whether picker is shown
   const appliedIds = useMemo(
-    () => (showDevicePicker && Array.isArray(props.selectedDeviceIds) ? props.selectedDeviceIds.map(String) : []),
-    [props.selectedDeviceIds, showDevicePicker]
+    () => (isMultiSessionMode && Array.isArray(props.selectedDeviceIds) ? props.selectedDeviceIds.map(String) : []),
+    [props.selectedDeviceIds, isMultiSessionMode]
   );
   const options = useMemo(
-    () => (showDevicePicker && Array.isArray(props.deviceOptions) ? props.deviceOptions.map(o => ({ id: String(o.id), label: o.label })) : []),
-    [props.deviceOptions, showDevicePicker]
+    () => (isMultiSessionMode && Array.isArray(props.deviceOptions) ? props.deviceOptions.map(o => ({ id: String(o.id), label: o.label })) : []),
+    [props.deviceOptions, isMultiSessionMode]
   );
   const [isOpen, setIsOpen] = useState(false);
   const [pendingIds, setPendingIds] = useState(appliedIds);
@@ -41,12 +45,12 @@ function FeaturePage(props) {
   const toggleId = (id) => {
     const sid = String(id);
     const currentPairId = props.currentSessionDeviceId;
-    
+
     // Prevent unchecking current session-device
     if (sid === currentPairId && pendingIds.includes(sid)) {
       return;
     }
-    
+
     const s = new Set(pendingIds);
     if (s.has(sid)) s.delete(sid); else s.add(sid);
     setPendingIds(Array.from(s));
@@ -59,7 +63,7 @@ function FeaturePage(props) {
     const currentPairId = props.currentSessionDeviceId;
     // Prevent removing current session-device
     if (String(id) === currentPairId) return;
-    
+
     const next = appliedIds.filter(x => x !== String(id));
     if (typeof props.onDeviceSelectionChange === "function") props.onDeviceSelectionChange(next);
   };
@@ -70,7 +74,7 @@ function FeaturePage(props) {
   }, [appliedIds, options, showDevicePicker]);
 
   // === aggregation helpers ===
-  const multiActive = showDevicePicker && Array.isArray(props.features);
+  const multiActive = isMultiSessionMode && Array.isArray(props.features);
 
   const aggAverage = (feature) => {
     if (!multiActive || !Array.isArray(feature.series)) return Math.round(feature.average ?? 0);
@@ -79,7 +83,7 @@ function FeaturePage(props) {
     const mean = sel.reduce((acc, s) => acc + (s.average ?? 0), 0) / sel.length;
     return Math.round(mean);
   };
-  
+
   const aggTrend = (feature) => {
     if (!multiActive || !Array.isArray(feature.series)) return feature.trend ?? 0;
     const sel = feature.series.filter(s => appliedIds.includes(String(s.deviceId)));
@@ -91,37 +95,10 @@ function FeaturePage(props) {
     return 0;
   };
 
-  // === LLM score aggregation helper ===
-  const aggLlmScore = (feature) => {
-    if (!multiActive || !Array.isArray(feature.llmSeries)) {
-      // Single mode - return the llmScore directly
-      return Math.round(feature.llmScore ?? 0);
-    }
-    // Multi mode - aggregate from selected devices
-    const sel = feature.llmSeries.filter(s => appliedIds.includes(String(s.deviceId)));
-    if (sel.length === 0) return 0;
-    const mean = sel.reduce((acc, s) => acc + (s.score ?? 0), 0) / sel.length;
-    return Math.round(mean);
-  };
-
-  // Get aggregated LLM explanation (for multi-mode, show all device explanations)
-  const getLlmExplanation = (feature) => {
-    if (!multiActive || !Array.isArray(feature.llmSeries)) {
-      return feature.llmExplanation || '';
-    }
-    // Multi mode - combine explanations from selected devices
-    const sel = feature.llmSeries.filter(s => appliedIds.includes(String(s.deviceId)));
-    const explanations = sel
-      .filter(s => s.explanation)
-      .map(s => `${s.deviceLabel}: ${s.explanation}`)
-      .join('\n\n');
-    return explanations;
-  };
-
   // === ONE overlaid time-axis mini-plot per metric ===
   // Colorblind-friendly palette (using Okabe-Ito colors)
   const palette = ["#0173B2", "#DE8F05", "#029E73", "#CC78BC", "#ECE133", "#56B4E9", "#949494", "#F0E442"];
-  
+
   const OverlayPlot = ({ feature }) => {
     // Use multi-session style if we're in multi-session mode (even with single selection)
     if (!multiActive || !Array.isArray(feature.series)) {
@@ -130,10 +107,10 @@ function FeaturePage(props) {
       if (!vals.length) return <div className={style["no-data-span"]} style={{ width: adjDim(74) + "px" }} />;
       return (
         <svg viewBox="0 -0.5 74 39.5" className={style.svg} style={{ width: adjDim(74) + "px" }}>
-          <path 
-            d={feature.path} 
-            fill="none" 
-            className={feature.trend >= 0 ? style.positive : feature.trend === -1 ? style.negative : ""} 
+          <path
+            d={feature.path}
+            fill="none"
+            className={feature.trend >= 0 ? style.positive : feature.trend === -1 ? style.negative : ""}
           />
         </svg>
       );
@@ -144,21 +121,11 @@ function FeaturePage(props) {
     if (sel.length === 0) return <div className={style["no-data-span"]} style={{ width: adjDim(120) + "px" }} />;
 
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: adjDim(6) + "px" }}>
-        <svg viewBox="0 0 120 36" className={style.svg} style={{ width: adjDim(120) + "px", height: adjDim(36) + "px" }}>
-          {sel.map((s, i) => (
-            <path key={s.deviceId} d={pathFrom(s.values)} fill="none" stroke={palette[i % palette.length]} strokeWidth="1.5" />
-          ))}
-        </svg>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: adjDim(8) + "px" }}>
-          {sel.map((s, i) => (
-            <span key={s.deviceId} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: adjDim(10) + "px" }}>
-              <span style={{ width: 10, height: 2, background: palette[i % palette.length], display: "inline-block" }} />
-              {s.deviceLabel}
-            </span>
-          ))}
-        </div>
-      </div>
+      <svg viewBox="0 0 120 36" className={style.svg} style={{ width: adjDim(120) + "px", height: adjDim(36) + "px" }}>
+        {sel.map((s, i) => (
+          <path key={s.deviceId} d={pathFrom(s.values)} fill="none" stroke={palette[i % palette.length]} strokeWidth="1.5" />
+        ))}
+      </svg>
     );
   };
 
@@ -209,7 +176,7 @@ function FeaturePage(props) {
         <button
           ref={togglerRef}
           className="dropdown"
-          style={{ 
+          style={{
             width: "90%",
             textAlign: "left",
             paddingLeft: adjDim(12) + "px",
@@ -241,19 +208,19 @@ function FeaturePage(props) {
               const checked = pendingIds.includes(opt.id);
               const currentPairId = props.currentSessionDeviceId;
               const isCurrentSession = opt.id === currentPairId;
-              
+
               return (
-                <label key={opt.id} style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 8, 
-                  padding: "6px 8px", 
+                <label key={opt.id} style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 8px",
                   cursor: isCurrentSession ? "default" : "pointer",
                   opacity: isCurrentSession ? 0.8 : 1
                 }}>
-                  <input 
-                    type="checkbox" 
-                    checked={checked} 
+                  <input
+                    type="checkbox"
+                    checked={checked}
                     onChange={() => toggleId(opt.id)}
                     disabled={isCurrentSession && checked}
                   />
@@ -271,33 +238,41 @@ function FeaturePage(props) {
     <>
       {showDevicePicker && <DevicePicker />}
 
-      {/* Refresh button for LLM scores */}
-      {props.refreshLlmScores && (
-        <div className="small-section" style={{ marginBottom: adjDim(8) + "px" }}>
-          <button 
-            className="option-button" 
-            onClick={props.refreshLlmScores}
-            disabled={props.llmLoading}
-            style={{ 
-              fontSize: adjDim(12) + "px",
-              opacity: props.llmLoading ? 0.6 : 1,
-              cursor: props.llmLoading ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {props.llmLoading ? 'Generating LLM Scores...' : 'Refresh LLM Scores'}
-          </button>
-        </div>
-      )}
-
       <div className="small-section">
+        {/* Shared legend for multi-session mode (hidden when rendered externally) */}
+        {!props.hideLegend && multiActive && Array.isArray(props.features) && props.features.length > 0 && (() => {
+          const firstFeature = props.features.find(f => Array.isArray(f?.series));
+          if (!firstFeature) return null;
+          const sel = firstFeature.series.filter(s => appliedIds.includes(String(s.deviceId)));
+          if (sel.length <= 1) return null;
+          return (
+            <div style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: adjDim(12) + "px",
+              marginBottom: adjDim(12) + "px",
+              padding: adjDim(8) + "px",
+              background: "#f8fafc",
+              borderRadius: adjDim(6) + "px",
+              border: "1px solid #e2e8f0"
+            }}>
+              {sel.map((s, i) => (
+                <span key={s.deviceId} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: adjDim(11) + "px", color: "#475569" }}>
+                  <span style={{ width: 14, height: 3, background: palette[i % palette.length], display: "inline-block", borderRadius: 2 }} />
+                  {s.deviceLabel}
+                </span>
+              ))}
+            </div>
+          );
+        })()}
+
         <table className={style["features-table"]}>
           <thead>
             <tr>
-              <th className={style["desc-header"]} style={{ width: adjDim(186) + "px" }}>Classifier</th>
-              <th className={style["score-header"]} style={{ width: adjDim(59) + "px", paddingRight: adjDim(24) + "px" }}>Score</th>
-              <th className={style["score-header"]} style={{ width: adjDim(80) + "px", paddingRight: adjDim(24) + "px" }}>LLM Score</th>
+              <th className={style["desc-header"]} style={{ width: adjDim(multiActive ? 150 : 186) + "px" }}>Classifier</th>
+              <th className={style["score-header"]} style={{ width: adjDim(multiActive ? 140 : 59) + "px", textAlign: "center" }}>Score</th>
               <th className={style["graph-header"]} style={{ width: multiActive ? adjDim(120) + "px" : adjDim(74) + "px" }}>
-                {multiActive ? "Graph" : "Graph"}
+                Graph
               </th>
             </tr>
           </thead>
@@ -311,86 +286,57 @@ function FeaturePage(props) {
                 .map((feature, idx) => {
                   const avg = multiActive ? aggAverage(feature) : Math.round(feature.average);
                   const trend = multiActive ? aggTrend(feature) : feature.trend;
-                  const llmScore = aggLlmScore(feature);
-                  const llmExplanation = getLlmExplanation(feature);
-                  
+
                   return (
                     <tr key={idx}>
                       <td>
                         <img alt="quest" onClick={() => props.getInfo(feature.name)} className={style["info-button"]} src={questIcon} />
                         {feature.name}
                       </td>
-                      
-                      {/* LIWC Score column */}
-                      <td className={style.score} style={{ width: adjDim(59) + "px", paddingRight: adjDim(24) + "px" }}>
-                        <div className={style.number} style={{ fontSize: adjDim(22) + "px" }}>{avg}</div>
-                        <div
-                          className={
-                            trend === 1 ? `${style["direction-indicator"]} ${style.positive}`
-                              : trend === 0 ? `${style["direction-indicator"]} ${style.neutral}`
-                              : `${style["direction-indicator"]} ${style.negative}`
-                          }
-                        />
+
+                      {/* Score column */}
+                      <td className={style.score}>
+                        <div style={{ display: "flex", justifyContent: "center", alignItems: "center" }}>
+                          <div className={style.number} style={{ fontSize: adjDim(22) + "px" }}>{avg}</div>
+                          <div
+                            className={
+                              trend === 1 ? `${style["direction-indicator"]} ${style.positive}`
+                                : trend === 0 ? `${style["direction-indicator"]} ${style.neutral}`
+                                : `${style["direction-indicator"]} ${style.negative}`
+                            }
+                          />
+                        </div>
                         {multiActive && Array.isArray(feature.series) && (
-                          <div style={{ marginTop: adjDim(4) + "px", lineHeight: 1.2 }}>
+                          <div style={{ marginTop: adjDim(6) + "px", lineHeight: 1.4 }}>
                             {feature.series
                               .filter(s => appliedIds.includes(String(s.deviceId)))
-                              .map((s, i, arr) => (
-                                <span key={s.deviceId} style={{ fontSize: adjDim(10) + "px", opacity: 0.75 }}>
-                                  {s.deviceLabel}: {Math.round(s.average)}{i < arr.length - 1 ? " • " : ""}
-                                </span>
+                              .map((s, i) => (
+                                <div key={s.deviceId} style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: 4,
+                                  fontSize: adjDim(10) + "px",
+                                  color: "#64748b",
+                                  marginBottom: 2
+                                }}>
+                                  <span style={{
+                                    width: 8,
+                                    height: 2,
+                                    background: palette[i % palette.length],
+                                    display: "inline-block",
+                                    borderRadius: 1,
+                                    flexShrink: 0
+                                  }} />
+                                  <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                    {s.deviceLabel}: {Math.round(s.average)}
+                                  </span>
+                                </div>
                               ))}
                           </div>
                         )}
                       </td>
-                      
-                      {/* LLM Score column with explanation icon */}
-                      <td className={style.score} style={{ width: adjDim(80) + "px", paddingRight: adjDim(24) + "px" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: adjDim(4) + "px" }}>
-                          <div className={style.number} style={{ fontSize: adjDim(22) + "px", flex: 1 }}>
-                            {llmScore || "-"}
-                          </div>
-                          {llmScore > 0 && llmExplanation && (
-                            <img 
-                              alt="LLM explanation" 
-                              onClick={() => props.showLlmExplanation(feature.name, llmExplanation)}
-                              className={style["info-button"]} 
-                              src={questIcon}
-                              style={{ 
-                                cursor: "pointer",
-                                filter: "hue-rotate(30deg)",  // Make it slightly different color
-                                width: adjDim(18) + "px",
-                                height: adjDim(18) + "px"
-                              }}
-                            />
-                          )}
-                        </div>
-                        {/* Show score difference indicator if both scores exist */}
-                        {llmScore > 0 && (
-                          <div 
-                            style={{ 
-                              fontSize: adjDim(11) + "px", 
-                              color: llmScore > avg ? "#029E73" : llmScore < avg ? "#DE8F05" : "#666",
-                              marginTop: adjDim(2) + "px"
-                            }}
-                          >
-                            {llmScore > avg ? "+" : ""}{llmScore - avg}
-                          </div>
-                        )}
-                        {/* Show individual device LLM scores for multi-session */}
-                        {multiActive && Array.isArray(feature.llmSeries) && (
-                          <div style={{ marginTop: adjDim(4) + "px", lineHeight: 1.2 }}>
-                            {feature.llmSeries
-                              .filter(s => appliedIds.includes(String(s.deviceId)))
-                              .map((s, i, arr) => (
-                                <span key={s.deviceId} style={{ fontSize: adjDim(10) + "px", opacity: 0.75 }}>
-                                  {s.deviceLabel}: {Math.round(s.score) || "-"}{i < arr.length - 1 ? " • " : ""}
-                                </span>
-                              ))}
-                          </div>
-                        )}
-                      </td>
-                      
+
                       <td><OverlayPlot feature={feature} /></td>
                     </tr>
                   );
@@ -408,17 +354,6 @@ function FeaturePage(props) {
         show={props.showFeatureDialog}
         closedialog={props.closeDialog}
       />
-
-      {/* LLM Explanation dialog */}
-      {props.showLlmExplanationDialog && props.selectedLlmExplanation && (
-        <DialogBox
-          itsclass={"add-dialog"}
-          heading={`LLM Analysis: ${props.selectedLlmExplanation.metric}`}
-          message={props.selectedLlmExplanation.explanation}
-          show={props.showLlmExplanationDialog}
-          closedialog={props.closeDialog}
-        />
-      )}
     </>
   );
 }

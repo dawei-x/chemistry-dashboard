@@ -16,7 +16,6 @@ import SessionQRCode from "../feedback-form/session-qrcode";
 
 import style from "./byod-join.module.css"
 import style2 from "../pod-details/pod.module.css"
-import style3 from "../manage-keyword-lists/manage-keyword-lists.module.css"
 import style4 from "../components/context-menu/context-menu.module.css"
 import style5 from "../sessions/sessions.module.css"
 import MicIcon from "@icons/Mic"
@@ -173,11 +172,7 @@ function ByodJoinPage(props) {
                                         <div className="mt-2 h-fit w-[300px] sm:w-[400px] lg:w-3xl">
                                             {!props.speakers && (
                                                 <div
-                                                    className={
-                                                        style3[
-                                                            "load-text onload"
-                                                        ]
-                                                    }
+                                                    className={`${style["load-text"]} ${style["onload"]}`}
                                                 >
                                                     Loading...
                                                 </div>
@@ -186,14 +181,14 @@ function ByodJoinPage(props) {
                                                 props.speakers.length === 0 && (
                                                     <div
                                                         className={
-                                                            style3[
-                                                                "empty-keyword-list"
+                                                            style[
+                                                                "empty-speaker-list"
                                                             ]
                                                         }
                                                     >
                                                         <div
                                                             className={
-                                                                style3[
+                                                                style[
                                                                     "load-text"
                                                                 ]
                                                             }
@@ -203,7 +198,7 @@ function ByodJoinPage(props) {
                                                         </div>
                                                         <div
                                                             className={
-                                                                style3[
+                                                                style[
                                                                     "load-text-description"
                                                                 ]
                                                             }
@@ -233,7 +228,7 @@ function ByodJoinPage(props) {
                                                         )}
                                                         <div
                                                             className={
-                                                                style3[
+                                                                style[
                                                                     "click-mask"
                                                                 ]
                                                             }
@@ -246,8 +241,8 @@ function ByodJoinPage(props) {
                                                         </div>
                                                         <AppContextMenu
                                                             className={
-                                                                style3[
-                                                                    "keyword-list-options"
+                                                                style[
+                                                                    "speaker-list-options"
                                                                 ]
                                                             }
                                                         >

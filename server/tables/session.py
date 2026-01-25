@@ -11,9 +11,7 @@ class Session(db.Model):
     end_date = db.Column(db.DateTime)
     passcode = db.Column(db.String(64))
     folder = db.Column(db.Integer, db.ForeignKey('folder.id'), nullable=True)
-    topic_model_id = db.Column(db.Integer, db.ForeignKey('topic_model.id'), nullable=True)
-
-    keywords = db.relationship("Keyword", lazy='joined', uselist=True)
+    topic_model_id = db.Column(db.Integer, nullable=True)  # Deprecated, kept for backwards compatibility
 
     NAME_MAX_LENGTH = 64
     NAME_CHARS = 'a-zA-Z0-9\': '
@@ -41,7 +39,6 @@ class Session(db.Model):
             creation_date=str(self.creation_date) + ' UTC',
             end_date=str(self.end_date) + ' UTC' if self.end_date else None,
             length=self.get_length(), # length is not stored in database as it can be derived
-            keywords=[keyword.keyword for keyword in self.keywords],
             folder=self.folder,
             topic_model_id=self.topic_model_id
         )

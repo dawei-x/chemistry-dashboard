@@ -563,6 +563,7 @@
   padding: 14px 20px;
   background: linear-gradient(to bottom, #FFFFFF, #F8FAFC);
   border-bottom: 1px solid #E2E8F0;
+  flex-shrink: 0;
 }
 
 .info {

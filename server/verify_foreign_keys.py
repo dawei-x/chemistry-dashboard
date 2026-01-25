@@ -10,12 +10,12 @@ from app import app, db
 import sqlalchemy as sa
 
 def check_foreign_keys():
-    """Check and display all foreign key constraints for llm_metrics and transcript tables"""
+    """Check and display all foreign key constraints for transcript tables"""
 
     with app.app_context():
         inspector = sa.inspect(db.engine)
 
-        tables_to_check = ['llm_metrics', 'transcript', 'concept_session', 'speaker']
+        tables_to_check = ['transcript', 'concept_session', 'speaker']
 
         results = []
 
@@ -62,7 +62,7 @@ def check_foreign_keys():
 
         for row in results:
             table_name, constraint_name, col, ref, ondelete = row
-            if table_name in ['llm_metrics', 'transcript']:
+            if table_name in ['transcript']:
                 if ondelete != 'CASCADE':
                     print(f"⚠️  {table_name}.{col} -> {ref}: Currently {ondelete}, needs CASCADE")
                 else:
@@ -77,7 +77,7 @@ def check_foreign_keys():
 
         for row in results:
             table_name, constraint_name, col, ref, ondelete = row
-            if table_name in ['llm_metrics', 'transcript'] and ondelete != 'CASCADE':
+            if table_name in ['transcript'] and ondelete != 'CASCADE':
                 print(f"-- Fix {table_name}")
                 print(f"ALTER TABLE {table_name} DROP FOREIGN KEY {constraint_name};")
                 referred_table = ref.split('.')[0]

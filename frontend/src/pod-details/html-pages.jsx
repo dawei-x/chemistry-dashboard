@@ -31,11 +31,7 @@ function PodComponentPages(props) {
             <AppSessionToolbar
               session={props.session}
               closingSession={props.onSessionClosing}
-              menus={[
-                { title: "Group", action: () => props.viewGroup() },
-                { title: "Individual", action: () => props.viewIndividual() },
-                { title: "Comparison", action: () => props.viewComparison() },
-              ]}
+              menus={[]}
             />
           ) : null}
 

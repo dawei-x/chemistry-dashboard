@@ -18,10 +18,8 @@ function AppTimeline(props) {
     //const [reload, setReload] = useState(false);
 
     useEffect(() => {
-    	
         if (props.transcripts !== undefined) {
             setTranscripts(props.transcripts);
-            refreshTimeline();
         }
 
         if (props.start !== undefined) {
@@ -29,39 +27,45 @@ function AppTimeline(props) {
             if (props.start === 0) {
                 setStartText('Start');
             } else {
-                setStartText(formatSeconds(_start));
+                setStartText(formatSeconds(props.start)); // Use props.start directly, not stale _start
             }
-            refreshTimeline();
         }
 
         if (props.end !== undefined) {
             setEnd(props.end);
-            if (props.end === props.session.length) {
-                setEndText((props.session.recording) ? 'Now' : 'End');
+            if (props.end === props.session?.length) {
+                setEndText((props.session?.recording) ? 'Now' : 'End');
             } else {
-                setEndText(formatSeconds(_end));
+                setEndText(formatSeconds(props.end)); // Use props.end directly, not stale _end
             }
-            refreshTimeline();
         }
-        //setReload(true)
-    }, [props.transcripts])
+    }, [props.transcripts, props.start, props.end, props.session?.length, props.session?.recording])
+
+    // Separate effect for refreshing timeline when dependencies change
+    useEffect(() => {
+        refreshTimeline();
+    }, [props.transcripts, props.start, props.end])
 
 
     const refreshTimeline = () => {
-        const duration = _end - _start;
-        const temptranscript = [] 
-        if(props.transcripts !== undefined){
-        for (const transcript of props.transcripts) {
-            const pct_start = (transcript.start_time - _start) / duration;
-            const pct_length = transcript.length / duration;
-            const displayTranscript = {};
-            displayTranscript['transcript'] = transcript;
-            displayTranscript['left'] = adjDim(pct_start * TIMELINE_WIDTH + TIMELINE_LEFT);
-            displayTranscript['width'] = adjDim(Math.min(Math.max(pct_length * TIMELINE_WIDTH,
-                MIN_UTTERANCE_WIDTH), TIMELINE_WIDTH * (1 - pct_start)));
+        // Use props directly to avoid stale state issues
+        const start = props.start ?? 0;
+        const end = props.end ?? 0;
+        const duration = end - start;
+
+        const temptranscript = [];
+        if (props.transcripts !== undefined && duration > 0) {
+            for (const transcript of props.transcripts) {
+                const pct_start = (transcript.start_time - start) / duration;
+                const pct_length = transcript.length / duration;
+                const displayTranscript = {};
+                displayTranscript['transcript'] = transcript;
+                displayTranscript['left'] = adjDim(pct_start * TIMELINE_WIDTH + TIMELINE_LEFT);
+                displayTranscript['width'] = adjDim(Math.min(Math.max(pct_length * TIMELINE_WIDTH,
+                    MIN_UTTERANCE_WIDTH), TIMELINE_WIDTH * (1 - pct_start)));
                 temptranscript.push(displayTranscript);
+            }
         }
-    }
         setDisplayTranscripts(temptranscript);
     }
 

@@ -19,7 +19,6 @@ class Transcript(db.Model):
     speaker_tag = db.Column(db.String(64))
     speaker_id = db.Column(db.Integer)
 
-    keywords = db.relationship("KeywordUsage", lazy='joined', uselist=True)
     metrics = db.relationship("SpeakerTranscriptMetrics", back_populates="transcript", cascade="all, delete",passive_deletes=True)
 
     def __hash__(self):
@@ -61,8 +60,7 @@ class Transcript(db.Model):
             word_count=self.word_count,
             topic_id=self.topic_id,
             speaker_tag=self.speaker_tag,
-            speaker_id=self.speaker_id,
-            keywords=[keyword.json(suppress=['transcript_id']) for keyword in self.keywords]
+            speaker_id=self.speaker_id
         )
 
     @staticmethod

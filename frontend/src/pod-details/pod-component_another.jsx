@@ -5,7 +5,6 @@ import { ActiveSessionService } from "../services/active-session-service";
 import { SessionModel } from "../models/session";
 import { DeviceModel } from "../models/device";
 import { TranscriptModel } from "../models/transcript";
-import { KeywordUsageModel } from "../models/keyword-usage";
 import { SpeakerModel } from "../models/speaker";
 import { useEffect, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
@@ -128,7 +127,7 @@ function PodComponent() {
       "Analytic thinking",
       "Clout",
       "Authenticity",
-      "Confusion",
+      "Certainty",
       "Participation",
       "Social Impact",
       "Responsivity",
@@ -144,7 +143,6 @@ function PodComponent() {
     let boxArr = [
       "Timeline control",
       "Discussion timeline",
-      "Keyword detection",
       "Discussion features",
       "Radar chart",
       "Participation",

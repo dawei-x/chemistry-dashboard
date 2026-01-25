@@ -34,18 +34,4 @@ const adjDim = (n) => {
     return isLargeScreen() ? n : (window.innerWidth * n / 400);
 }
 
-// parses topic models as they currently are
-const unpackTopModels = (topModels) => {
-    for (let i = 0; i < topModels.length; i++) {
-      let split = topModels[i].summary.split("\n");
-      if (split.length > 1) {
-        topModels[i].summary = split[0];
-        //but it's not just this. you have to go and select the topics that were selected
-        //then interaction where you can print the data if it exists for each topic
-        topModels[i].data = split[1];
-      }
-    }
-    return topModels
-}
-
-export {useLogin, useD3, isLargeScreen, adjDim, unpackTopModels}
+export {useLogin, useD3, isLargeScreen, adjDim}

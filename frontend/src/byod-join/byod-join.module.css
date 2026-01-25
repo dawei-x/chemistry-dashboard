@@ -266,6 +266,10 @@
   width: auto;
   margin-bottom: 32px;
 }
+.onload {
+  /* Used with .load-text for initial hidden state */
+}
+
 .load-text.onload {
   opacity: 0;
 }
@@ -528,6 +532,25 @@
   flex-flow: wrap;
   align-content: center;
   justify-content: space-evenly;
+}
+
+/* Speaker list styles (moved from manage-keyword-lists) */
+.empty-speaker-list {
+  margin-top: 50px;
+  text-align: center;
+}
+
+.speaker-list-options {
+  grid-area: right;
+}
+
+.click-mask {
+  position: absolute;
+  top: 0px;
+  left: 0px;
+  height: 100%;
+  width: 275px;
+  cursor: pointer;
 }
 
 /*# sourceMappingURL=byod-join.module.css.map */

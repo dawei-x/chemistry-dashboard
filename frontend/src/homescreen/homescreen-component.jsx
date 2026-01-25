@@ -6,9 +6,7 @@ import { AuthService } from '../services/auth-service';
 
 import recordicon from '../assets/img/icon-record.svg'
 import speaker from '../assets/img/home_graphic_respeaker.svg'
-import wordlist from '../assets/img/icon-wordlist.svg'
 import pod from '../assets/img/icon-pod.svg'
-import trending from '../assets/img/icon-trending-up.svg'
 import settings from '../assets/img/settings.svg'
 import question from '../assets/img/question.svg'
 import logouticon from '../assets/img/logout.svg'
@@ -53,13 +51,8 @@ function HomeScreen(props) {
       </div>
       <img alt="speaker" className="flex w-36.5 h-36.5 mt-13 mb-12.5" src={speaker} />
       <Menus menuIcon={recordicon} menuName="Discussions" route={navigate} path='/sessions' />
-      <Menus menuIcon={ragicon} menuName="RAG Discovery" route={navigate} path='/discover' />
-      <Menus menuIcon={question} menuName="Agent Chat (V7)" route={navigate} path='/chat-v7' />
-      <Menus menuIcon={question} menuName="Agent Chat (V3)" route={navigate} path='/chat-v3' />
-      <Menus menuIcon={question} menuName="Baseline Chat" route={navigate} path='/chat-baseline' />
-      <Menus menuIcon={wordlist} menuName="Keyword" route={navigate} path='/keyword-lists' />
+      <Menus menuIcon={ragicon} menuName="Agent Chat (V7)" route={navigate} path='/chat-v7' />
       <Menus menuIcon={pod} menuName="Pods" route={navigate} path='/pods' />
-      <Menus menuIcon={trending} menuName="Topic Modeling" route={navigate} path='/topic-models' />
       <Menus menuIcon={settings} menuName="Settings" route={navigate} path='/Settings' />
       <Menus menuIcon={question} menuName="Help" onClick={navigateToHelp} />
       <Menus menuIcon={logouticon} menuName="Sign Out"  onClick={logout} />

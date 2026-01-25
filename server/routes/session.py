@@ -75,8 +75,7 @@ def create_session(user, **kwargs):
     if not valid:
         return json_response({'message': message}, 400)
     devices = request.json.get('devices', [])
-    keyword_list_id = sanitize(request.json.get('keywordListId', None))
-    topic_model_id = sanitize(request.json.get('topicModelId', None))
+    # keyword_list_id and topic_model_id are deprecated
     byod = request.json.get('byod', False)
     features = request.json.get('features', True)
     doa = request.json.get('doa', False)
@@ -87,7 +86,7 @@ def create_session(user, **kwargs):
         owned_folder = database.get_folders(id=folder, owner_id=user['id'], first =True)
         if not owned_folder:
             return json_response({'message': 'Either the folder does not exist or invalid access'}, 404)
-    new_session = session_handler.create_session(user['id'], name, devices, keyword_list_id, topic_model_id, byod, features, doa, folder)
+    new_session = session_handler.create_session(user['id'], name, devices, None, None, byod, features, doa, folder)
     return json_response(new_session.json())
 
 @api_routes.route('/api/v1/sessions/byod', methods=['POST'])
@@ -203,17 +202,10 @@ def session_device_speakers(session_id, device_id, **kwargs):
     speakers = database.get_speakers(session_device_id=device_id)
     return json_response([speaker.json() for speaker in speakers])
 
-@api_routes.route('/api/v1/sessions/<int:session_id>/devices/<int:device_id>/keywords', methods=['GET'])
-@wrappers.verify_login(public=True)
-@wrappers.verify_session_access
-def session_device_keywords(session_id, device_id, **kwargs):
-    keywords = database.get_keyword_usages(session_device_id=device_id)
-    return json_response([keyword.json() for keyword in keywords])
-
 @api_routes.route('/api/v1/sessions/<int:session_id>/devices/<int:session_device_id>', methods=['GET'])
 @wrappers.verify_login(public=True)
 @wrappers.verify_session_access
-def session_device(session_id, session_device_id, processing_key, **kwargs):
+def session_device(session_id, session_device_id, processing_key=None, **kwargs):
         if session_device_id:
           session_device = database.get_session_devices(id=session_device_id)
         elif processing_key:
@@ -279,22 +271,17 @@ def remove_device_from_session(session_id, session_device_id, **kwargs):
 @wrappers.verify_session_access
 def export_session(session_id, **kwargs):
     si = io.StringIO()
-    field_names = ['Device ID', 'Device Name', 'Start Time', 'Transcript', 'Keywords', 'Keywords Detected', 'Similarity', 'Analytic Thinking', 'Authenticity', 'Certainty', 'Clout', 'Emotional Tone', 'Direction', 'Word Count', 'Speaker Tag', 'Speaker ID', 'Topic ID']
+    field_names = ['Device ID', 'Device Name', 'Start Time', 'Transcript', 'Analytic Thinking', 'Authenticity', 'Certainty', 'Clout', 'Emotional Tone', 'Direction', 'Word Count', 'Speaker Tag', 'Speaker ID', 'Topic ID']
     fwrite = csv.DictWriter(si, fieldnames = field_names)
     fwrite.writeheader()
     session_devices = database.get_session_devices(session_id=session_id)
     for session_device in session_devices:
         transcripts = database.get_transcripts(session_device_id=session_device.id)
-        keywords = database.get_keyword_usages(session_device_id=session_device.id)
         for t in transcripts:
-            transcript_keywords = [keyword for keyword in keywords if keyword.transcript_id == t.id]
             fwrite.writerow({'Device ID':session_device.id,
                 'Device Name':session_device.name,
                 'Start Time':str(timedelta(seconds=int(t.start_time))),
                 'Transcript':t.transcript,
-                'Keywords': ', '.join([keyword.keyword for keyword in transcript_keywords]),
-                'Keywords Detected': ', '.join([keyword.word for keyword in transcript_keywords]),
-                'Similarity': ', '.join([str(round((1-keyword.similarity)*100,3)) for keyword in transcript_keywords]),
                 'Analytic Thinking': int(t.analytic_thinking_value),
                 'Authenticity': int(t.authenticity_value),
                 'Certainty': int(t.certainty_value),

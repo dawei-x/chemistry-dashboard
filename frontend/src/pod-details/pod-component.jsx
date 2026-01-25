@@ -42,13 +42,13 @@ function PodComponent() {
   useEffect(() => {
     setShowFeatures(
       [
-        "Emotional tone","Analytic thinking","Clout","Authenticity","Confusion",
+        "Emotional tone","Analytic thinking","Clout","Authenticity","Certainty",
         "Participation","Social Impact","Responsivity","Internal Cohesion","Newness","Communication Density",
       ].map((label, idx) => ({ label, value: idx, clicked: true }))
     );
     setShowBoxes(
       [
-        "Timeline control","Discussion timeline","Keyword detection","Discussion features","Radar chart",
+        "Timeline control","Discussion timeline","Discussion features","Radar chart",
         "Participation","Visual Scaffolding","7C Analysis","Social Impact","Responsivity","Internal Cohesion","Newness","Communication Density",
       ].map((label, idx) => ({ label, value: idx, clicked: true }))
     );
@@ -147,7 +147,7 @@ function PodComponent() {
     const len = session?.length ?? 0;
     const sTime = Math.round(len * timeRange[0] * 100) / 100;
     const eTime = Math.round(len * timeRange[1] * 100) / 100;
-    setStartTime(sTime); 
+    setStartTime(sTime);
     setEndTime(eTime);
     setDisplayTranscripts(transcripts.filter(t => t.start_time >= sTime && t.start_time <= eTime));
   }, [session?.length, timeRange, transcripts]);
@@ -242,7 +242,7 @@ function PodComponent() {
   // ---------- keep current pair LIVE in cache/multiSeries (GROUP MODE ONLY) ----------
   useEffect(() => {
     if (!session?.id || !sessionDevice?.id || details !== "Group") return;
-    
+
     const curPairId = `${session.id}:${sessionDevice.id}`;
     const label = `${session.name || session.id} (${sessionDevice.name || sessionDevice.id})`;
     const slice = displayTranscripts || [];

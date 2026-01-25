@@ -1,23 +1,26 @@
 .speakerPanel {
-  width: 280px;
+  width: 260px;
   height: 100%;
   background: white;
   border-left: 1px solid #e0e0e0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;  /* Don't shrink when space is tight */
 }
 
 .header {
   padding: 15px;
   border-bottom: 1px solid #e0e0e0;
   background: #f8f9fa;
+  overflow: visible;
 }
 
 .header h3 {
   margin: 0 0 10px 0;
-  font-size: 16px;
+  font-size: 14px;
   color: #2c3e50;
+  white-space: nowrap;
 }
 
 .controls {
@@ -148,16 +151,12 @@
 /* Responsive adjustments */
 @media (max-width: 1200px) {
   .speakerPanel {
-    width: 240px;
+    width: 200px;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .speakerPanel {
-    position: absolute;
-    right: 0;
-    top: 0;
-    z-index: 100;
-    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+    width: 180px;
   }
 }

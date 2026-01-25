@@ -150,7 +150,7 @@ function JoinPage() {
             "Analytic thinking",
             "Clout",
             "Authenticity",
-            "Confusion",
+            "Certainty",
             "Participation",
             "Social Impact",
             "Responsivity",
@@ -163,7 +163,6 @@ function JoinPage() {
         let boxArr = [
             "Timeline control",
             "Discussion timeline",
-            "Keyword detection",
             "Discussion features",
             "Radar chart",
             "Participation",
@@ -414,31 +413,53 @@ function JoinPage() {
 
     const addSpeakerFingerprint = async () => {
         if (audiows.current === null) {
+            console.error("[Fingerprint] WebSocket is null, cannot send fingerprint")
             return
         }
 
-        let message = null
-        message = {
-            type: "speaker",
-            id: selectedSpeaker.id,
-            alias: selectedSpeaker.alias,
-            size: currBlob.size,
-            blob_type: currBlob.type,
+        try {
+            let message = {
+                type: "speaker",
+                id: selectedSpeaker.id,
+                alias: selectedSpeaker.alias,
+                size: currBlob.size,
+                blob_type: currBlob.type,
+            }
+
+            console.log("[Fingerprint] Converting blob to array buffer...")
+            let data = await currBlob.arrayBuffer()
+            console.log("[Fingerprint] Blob size:", currBlob.size, "ArrayBuffer size:", data.byteLength)
+
+            console.log("[Fingerprint] Decoding audio data...")
+            let audiodata = await audioContext.decodeAudioData(data)
+            console.log("[Fingerprint] Audio decoded - channels:", audiodata.numberOfChannels,
+                        "length:", audiodata.length, "sampleRate:", audiodata.sampleRate)
+
+            const updatedSpeakers = speakers.map((s) =>
+                s.id === selectedSpeaker.id ? { ...s, fingerprinted: true } : s,
+            )
+            setSpeakers(updatedSpeakers)
+
+            // Get the raw Float32Array data and convert to ArrayBuffer for sending
+            const channelData = audiodata.getChannelData(0)
+            console.log("[Fingerprint] Channel data length:", channelData.length)
+
+            // Send the JSON message first
+            console.log("[Fingerprint] Sending JSON message...")
+            audiows.current.send(JSON.stringify(message))
+
+            // Send the audio data as ArrayBuffer (using .buffer property of the Float32Array)
+            console.log("[Fingerprint] Sending audio data as ArrayBuffer...")
+            audiows.current.send(channelData.buffer)
+
+            console.log("[Fingerprint] Successfully sent speaker fingerprint")
+            setCurrBlob(null)
+            closeDialog()
+        } catch (error) {
+            console.error("[Fingerprint] Error in addSpeakerFingerprint:", error)
+            setDisplayText("Error recording fingerprint: " + error.message)
+            setCurrentForm("FingerprintingError")
         }
-        let data = await currBlob.arrayBuffer()
-        let audiodata = await audioContext.decodeAudioData(data)
-        console.log(speakers)
-
-        const updatedSpeakers = speakers.map((s) =>
-            s.id === selectedSpeaker.id ? { ...s, fingerprinted: true } : s,
-        )
-
-        setSpeakers(updatedSpeakers)
-        audiows.current.send(JSON.stringify(message))
-        audiows.current.send(audiodata.getChannelData(0))
-        console.log("sent speaker fingerprint")
-        setCurrBlob(null)
-        closeDialog()
     }
 
     const changeAliasName = (newAlias) => {

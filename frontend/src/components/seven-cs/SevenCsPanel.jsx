@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import styles from './seven-cs.module.css';
 
-const SevenCsPanel = ({ sessionDeviceId }) => {
+const SevenCsPanel = ({ sessionDeviceId, sessionName, deviceName }) => {
     const [analysisData, setAnalysisData] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [selectedDimension, setSelectedDimension] = useState(null);
@@ -9,48 +9,42 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     // 7C framework definition for display
+    // Colors match the radar chart label backgrounds (35% opacity)
     const SEVEN_CS = {
         climate: {
             name: 'Climate',
             description: 'Emotional safety, respect, and comfort in group interactions',
-            color: '#FFB74D',  // Warm orange
-            icon: '🎧'
+            color: 'rgba(255, 183, 77, 0.35)'  // Warm orange
         },
         communication: {
             name: 'Communication',
             description: 'Quality and effectiveness of information exchange',
-            color: '#64B5F6',  // Light blue
-            icon: '📫'
+            color: 'rgba(100, 181, 246, 0.35)'  // Light blue
         },
         compatibility: {
             name: 'Compatibility',
             description: 'How well group members\' working styles complement each other',
-            color: '#BA68C8',  // Purple
-            icon: '🤝'
+            color: 'rgba(186, 104, 200, 0.35)'  // Purple
         },
         conflict: {
             name: 'Conflict',
             description: 'Approaches to handling disagreements and contentious situations',
-            color: '#EF5350',  // Red
-            icon: '⚡'
+            color: 'rgba(239, 83, 80, 0.35)'  // Red
         },
         context: {
             name: 'Context',
             description: 'Environmental factors and situational awareness',
-            color: '#66BB6A',  // Green
-            icon: '🌍'
+            color: 'rgba(102, 187, 106, 0.35)'  // Green
         },
         contribution: {
             name: 'Contribution',
             description: 'Individual participation and effort balance',
-            color: '#FFEE58',  // Yellow
-            icon: '✋'
+            color: 'rgba(205, 220, 57, 0.35)'  // Lime
         },
         constructive: {
             name: 'Constructive',
             description: 'Goal achievement and mutual benefit',
-            color: '#26C6DA',  // Cyan
-            icon: '🎯'
+            color: 'rgba(38, 198, 218, 0.35)'  // Cyan
         }
     };
 
@@ -187,17 +181,6 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
             >
                 <div className={styles.cardHeader}>
                     <div className={styles.cardTitle}>
-                        <span className={styles.cardIcon}>
-            {typeof config.icon === "string" && config.icon.length < 6 ? (
-                config.icon
-            ) : (
-                <img
-                    src={config.icon}
-                    alt={config.name}
-                    className={styles.iconImage}
-                />
-            )}
-        </span>
                         <h3>{config.name}</h3>
                     </div>
                     <span className={styles.segmentCount}>
@@ -226,15 +209,16 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
 
                 {data?.explanation && (
                     <p className={styles.explanation}>
-                        {data.explanation.substring(0, 150)}
-                        {data.explanation.length > 150 && '...'}
+                        {data.explanation.length > 150
+                            ? data.explanation.substring(0, 150).replace(/\s+\S*$/, '') + '...'
+                            : data.explanation}
                     </p>
                 )}
             </div>
         );
     };
 
-    const renderSelectedDimensionDetails = () => {
+    const renderEvidenceModal = () => {
         if (!selectedDimension || !analysisData) return null;
 
         const segments = analysisData.segments?.filter(
@@ -243,78 +227,88 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
         const dimensionData = analysisData.summary?.[selectedDimension];
         const config = SEVEN_CS[selectedDimension];
 
+        // Close modal on backdrop click
+        const handleBackdropClick = (e) => {
+            if (e.target === e.currentTarget) {
+                setSelectedDimension(null);
+            }
+        };
+
         return (
-            <div className={styles.detailSection}>
-                <div className={styles.detailHeader}>
-                    <h3>
-                        <span className={styles.cardIcon}>
-        {typeof config.icon === "string" && config.icon.length < 6 ? (
-          config.icon
-        ) : (
-          <img
-            src={config.icon}
-            alt={config.name}
-            className={styles.iconImage}
-          />
-        )}
-      </span>
-                        {config.name} - {segments.length} coded segments
-                    </h3>
-                    <button
-                        className={styles.closeButton}
-                        onClick={() => setSelectedDimension(null)}
-                    >
-                        ✕
-                    </button>
-                </div>
-
-                {dimensionData?.explanation && (
-                    <div className={styles.fullExplanation}>
-                        <h4>Analysis</h4>
-                        <p>{dimensionData.explanation}</p>
-                    </div>
-                )}
-
-                {dimensionData?.evidence && dimensionData.evidence.length > 0 && (
-                    <div className={styles.evidenceSection}>
-                        <h4>Key Evidence</h4>
-                        <ul className={styles.evidenceList}>
-                            {dimensionData.evidence.map((item, idx) => (
-                                <li key={idx}>{item}</li>
-                            ))}
-                        </ul>
-                    </div>
-                )}
-
-                <div className={styles.segmentList}>
-                    <h4>Coded Segments</h4>
-                    {segments.map((segment, idx) => (
-                        <div key={idx} className={styles.codedSegment}>
-                            <div className={styles.segmentMeta}>
-                                <span className={styles.timestamp}>
-                                    {formatTimestamp(segment.start_time)}
-                                </span>
-                                {segment.speaker_tag && (
-                                    <span className={styles.speaker}>
-                                        {segment.speaker_tag}
-                                    </span>
-                                )}
-                                {segment.confidence && (
-                                    <span className={styles.confidence}>
-                                        {Math.round(segment.confidence * 100)}% confident
-                                    </span>
-                                )}
-                            </div>
-                            <div className={styles.segmentText}>
-                                "{segment.text_snippet}"
-                            </div>
-                            {segment.coding_reason && (
-                                <div className={styles.codingReason}>
-                                    <em>{segment.coding_reason}</em>
-                                </div>
-                            )}
+            <div className={styles.modalOverlay} onClick={handleBackdropClick}>
+                <div className={styles.modalContainer}>
+                    <div className={styles.modalHeader}>
+                        <div className={styles.modalTitle}>
+                            <span
+                                className={styles.modalDimensionBadge}
+                                style={{ backgroundColor: config.color.replace('0.35', '1') }}
+                            />
+                            <h3>{config.name} ({dimensionData?.score || 0}/100) - {segments.length} coded segments</h3>
                         </div>
-                    ))}
+                        <button
+                            className={styles.modalCloseButton}
+                            onClick={() => setSelectedDimension(null)}
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <div className={styles.modalContent}>
+                        {dimensionData?.explanation && (
+                            <div className={styles.modalExplanation}>
+                                <h4>Analysis</h4>
+                                <p>{dimensionData.explanation}</p>
+                            </div>
+                        )}
+
+                        {dimensionData?.evidence && dimensionData.evidence.length > 0 && (
+                            <div className={styles.modalEvidence}>
+                                <h4>Key Evidence</h4>
+                                <ul className={styles.modalEvidenceList}>
+                                    {dimensionData.evidence.map((item, idx) => (
+                                        <li key={idx}>{item}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {segments.length > 0 && (
+                            <div className={styles.modalSegments}>
+                                <h4>Coded Segments</h4>
+                                {segments.map((segment, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={styles.modalSegment}
+                                        style={{ borderLeftColor: config.color.replace('0.35', '0.8') }}
+                                    >
+                                        <div className={styles.modalSegmentMeta}>
+                                            <span className={styles.modalTimestamp}>
+                                                {formatTimestamp(segment.start_time)}
+                                            </span>
+                                            {segment.speaker_tag && (
+                                                <span className={styles.modalSpeaker}>
+                                                    {segment.speaker_tag}
+                                                </span>
+                                            )}
+                                            {segment.confidence && (
+                                                <span className={styles.modalConfidence}>
+                                                    {Math.round(segment.confidence * 100)}% confident
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className={styles.modalSegmentText}>
+                                            "{segment.text_snippet}"
+                                        </div>
+                                        {segment.coding_reason && (
+                                            <div className={styles.modalCodingReason}>
+                                                {segment.coding_reason}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         );
@@ -382,20 +376,22 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
         <div className={styles.container}>
             <div className={styles.header}>
                 <div className={styles.headerInfo}>
-                    <h2>7C Collaboration Analysis</h2>
+                    <h2>7C Analysis{sessionName ? ` for ${sessionName}` : ''}{deviceName ? ` - ${deviceName}` : ''}</h2>
+                </div>
+                <div className={styles.headerActions}>
+                    <button
+                        onClick={triggerAnalysis}
+                        disabled={isAnalyzing}
+                        className={styles.updateButton}
+                    >
+                        {isAnalyzing ? 'Analyzing...' : 'Update Analysis'}
+                    </button>
                     {analysisData.metadata && (
                         <span className={styles.lastUpdated}>
                             Last analyzed: {formatDate(analysisData.metadata.updated_at)}
                         </span>
                     )}
                 </div>
-                <button
-                    onClick={triggerAnalysis}
-                    disabled={isAnalyzing}
-                    className={styles.updateButton}
-                >
-                    {isAnalyzing ? 'Analyzing...' : 'Update Analysis'}
-                </button>
             </div>
 
             <div className={styles.dimensionGrid}>
@@ -407,7 +403,7 @@ const SevenCsPanel = ({ sessionDeviceId }) => {
                 )}
             </div>
 
-            {selectedDimension && renderSelectedDimensionDetails()}
+            {selectedDimension && renderEvidenceModal()}
         </div>
     );
 };

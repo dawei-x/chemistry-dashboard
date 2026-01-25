@@ -181,7 +181,8 @@ function DiscussionGraphComponent() {
     for (const word of words) {
       const matchingKeywords = [];
       let highestSimilarity = 0;
-      for (const keyword of transcript.keywords) {
+      // Keywords field was removed - iterate over empty array if not present
+      for (const keyword of (transcript.keywords || [])) {
         if (word.word.toLowerCase().startsWith(keyword.word.toLowerCase())
           && !matchingKeywords.find(item => item.keyword === keyword.keyword)) {
           if (keyword.similarity > highestSimilarity) {

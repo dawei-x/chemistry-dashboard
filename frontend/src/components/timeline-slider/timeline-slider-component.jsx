@@ -63,7 +63,7 @@ function AppTimelineSlider(props) {
   // Handle dragging movement
   const handleDrag = (e) => {
     //if (draggingHandle === null) return;
-    if (draggingHandleRef.current === null || initalDragPos[0] === -1) return;
+    if (draggingHandleRef.current === null || initalDragPos.current[0] === -1) return;
 
     moveHandles(draggingHandleRef.current, e);
 

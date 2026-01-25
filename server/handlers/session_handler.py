@@ -8,7 +8,6 @@ from app import socketio, scheduler
 import json
 from device_websockets import ConnectionManager
 from redis_helper import RedisSessions
-from llm_scoring_service import generate_llm_scores_for_session_device
 from seven_cs_service import analyze_session_seven_cs
 from concept_generation_service import generate_concepts_for_session_device
 from discussion_pulse_service import generate_next_pulse
@@ -28,7 +27,7 @@ def start_pulse_generation(session_device_id):
         scheduler.add_job(
             func=generate_next_pulse,
             trigger='interval',
-            seconds=50,  # Generate pulse every 50 seconds
+            seconds=45,  # Generate pulse every 45 seconds
             args=[session_device_id],
             id=job_id,
             replace_existing=True,
@@ -52,17 +51,17 @@ def stop_pulse_generation(session_device_id):
         logging.debug(f"Pulse generation job not found for session_device {session_device_id}: {e}")
 
 def create_session(user_id, name, devices, keyword_list_id, topic_model_id, byod, features, doa, folder):
-    session, keywords = database.create_session(user_id, keyword_list_id, topic_model_id, name, folder)
+    # keyword_list_id and topic_model_id are deprecated but kept for API compatibility
+    session, _ = database.create_session(user_id, None, None, name, folder)
     if byod:
         session = database.generate_session_passcode(session.id)
-    keywords = [keyword.keyword for keyword in keywords]
     config = {
         'server_start': str(session.creation_date),
         'transcribe': True,
         'features': features,
-        'keywords': keywords,
+        'keywords': [],  # Keywords feature deprecated
         'doa': doa,
-        'topic_model': topic_model_id,
+        'topic_model': None,  # Topic model feature deprecated
         'owner': user_id
     }
     RedisSessions.create_session(session.id, config)
@@ -98,23 +97,6 @@ def end_session(session_id):
 
     # Note: Concept clustering is now handled by concept_generation_service
     # after post-discussion concept map generation completes
-
-    # Schedule LLM scoring for each session device ===
-    try:
-        for session_device in session_devices:
-            # Schedule as background job to avoid blocking the response
-            scheduler.add_job(
-                func=generate_llm_scores_for_session_device,
-                trigger='date',  # Run once, immediately
-                args=[session_device.id],
-                id=f'llm_score_{session_device.id}',  # Unique job ID
-                replace_existing=True,  # Replace if job already exists
-                misfire_grace_time=30  # Allow 30 seconds grace time
-            )
-            logging.info(f"Scheduled LLM scoring for session_device {session_device.id}")
-    except Exception as e:
-        logging.error(f"Failed to schedule LLM scoring: {e}")
-        # Don't fail the session end if LLM scoring fails
 
     # Schedule 7C analysis for each session device ===
     try:

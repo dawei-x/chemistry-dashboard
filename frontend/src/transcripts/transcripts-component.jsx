@@ -261,7 +261,8 @@ const createDisplayTranscripts = ()=> {
         const matchingKeywords = [];
         let highestSimilarity = 0;
         if (showKeywords) {
-          for (const keyword of transcript.keywords) {
+          // Keywords field was removed - iterate over empty array if not present
+          for (const keyword of (transcript.keywords || [])) {
             if (word.toLowerCase().startsWith(keyword.word.toLowerCase())
                 && !matchingKeywords.find(item => item.keyword === keyword.keyword)) {
               if (keyword.similarity > highestSimilarity) {

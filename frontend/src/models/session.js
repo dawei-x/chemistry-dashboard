@@ -7,7 +7,6 @@ export class SessionModel {
   creation_date;
   end_date;
   passcode;
-  keywords;
   folder;
 
   // Client Fields
@@ -58,7 +57,6 @@ export class SessionModel {
     model.local_start_date = new Date();
     model.local_start_date.setSeconds(model.local_start_date.getSeconds() - json['length']);
     model.passcode = json['passcode'];
-    model.keywords = json['keywords'];
     model.folder = json['folder']
     return model;
   }

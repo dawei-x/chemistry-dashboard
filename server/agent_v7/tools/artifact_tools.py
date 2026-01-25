@@ -178,6 +178,34 @@ def search_for_sessions(
         rag = _get_rag_service()
 
         # =========================================================================
+        # STEP 0: Check for exact session name match FIRST (priority over semantic)
+        # =========================================================================
+        exact_match_sessions = []
+        try:
+            conn = _get_db_connection()
+            cursor = conn.cursor(dictionary=True)
+            # Check for exact or partial name match (case insensitive)
+            cursor.execute("""
+                SELECT DISTINCT
+                    sd.id as session_device_id,
+                    s.id as session_id,
+                    COALESCE(s.name, sd.name) as session_name,
+                    sd.name as device_name
+                FROM session_device sd
+                JOIN session s ON sd.session_id = s.id
+                WHERE LOWER(s.name) = LOWER(%s)
+                   OR LOWER(s.name) LIKE LOWER(%s)
+                   OR LOWER(sd.name) LIKE LOWER(%s)
+            """, (query, f"%{query}%", f"%{query}%"))
+            exact_match_sessions = cursor.fetchall()
+            cursor.close()
+            conn.close()
+            if exact_match_sessions:
+                logger.info(f"  [exact_match] Found {len(exact_match_sessions)} sessions matching name '{query}'")
+        except Exception as e:
+            logger.warning(f"  [exact_match] Name lookup failed: {e}")
+
+        # =========================================================================
         # STEP 1: Query all three collections
         # =========================================================================
         results_per_collection = top_k * 3  # Get more results per collection for better fusion
@@ -290,17 +318,58 @@ def search_for_sessions(
         sorted_sessions = sorted(session_scores.values(), key=lambda x: x['best_match_score'], reverse=True)
 
         # =========================================================================
+        # STEP 3.5: Inject exact name matches at the TOP with high priority
+        # =========================================================================
+        if exact_match_sessions:
+            exact_match_ids = set()
+            for em in exact_match_sessions:
+                sid = em['session_device_id']
+                exact_match_ids.add(sid)
+                # Check if already in semantic results
+                existing = next((s for s in sorted_sessions if s['session_id'] == sid), None)
+                if existing:
+                    # Boost existing score to ensure it's at top
+                    existing['best_match_score'] = max(existing['best_match_score'], 1.0)
+                    existing['match_type'] = 'exact_name_match'
+                    logger.info(f"  [exact_match] Boosted session {sid} ({em['session_name']}) to top")
+                else:
+                    # Add exact match with high score
+                    sorted_sessions.insert(0, {
+                        "session_id": sid,
+                        "session_device_id": sid,
+                        "session_name": em['session_name'],
+                        "device_name": em.get('device_name'),
+                        "speakers": [],
+                        "best_match_score": 1.0,  # High score for exact match
+                        "collections_matched": ['exact_name'],
+                        "match_preview": f"Exact name match for '{query}'",
+                        "match_type": 'exact_name_match'
+                    })
+                    logger.info(f"  [exact_match] Added session {sid} ({em['session_name']}) as exact match")
+            # Re-sort to put boosted exact matches at top
+            sorted_sessions = sorted(sorted_sessions, key=lambda x: x['best_match_score'], reverse=True)
+
+        # =========================================================================
         # STEP 4: Smart filtering with relative threshold
         # =========================================================================
         if sorted_sessions:
-            best_score = sorted_sessions[0]['best_match_score']
+            # Calculate threshold from SEMANTIC results only (exclude exact matches)
+            semantic_sessions = [s for s in sorted_sessions if s.get('match_type') != 'exact_name_match']
+            if semantic_sessions:
+                best_semantic_score = semantic_sessions[0]['best_match_score']
+            else:
+                best_semantic_score = 0.05  # Default if no semantic results
+
             # Scale min_score to RRF range (RRF scores are typically 0.01-0.05)
             rrf_min_score = min_score * 0.05  # Scale down since RRF scores are much smaller
-            relative_threshold = best_score * min_relative_score
+            relative_threshold = best_semantic_score * min_relative_score
 
             ranked = []
             for s in sorted_sessions[:top_k]:
-                if s['best_match_score'] >= relative_threshold and s['best_match_score'] >= rrf_min_score:
+                # Always include exact name matches
+                if s.get('match_type') == 'exact_name_match':
+                    ranked.append(s)
+                elif s['best_match_score'] >= relative_threshold and s['best_match_score'] >= rrf_min_score:
                     ranked.append(s)
                 else:
                     logger.info(f"  [Search] Excluded session {s['session_id']} "

@@ -913,6 +913,15 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
     setTimeout(() => {
       cy.fit(50);
       cy.center();
+
+      // Cap zoom in clustered view to prevent nodes from being partially visible
+      if (viewMode === 'clustered') {
+        const zoomAfterFit = cy.zoom();
+        if (zoomAfterFit >= ZOOM_THRESHOLDS.CLUSTERS_ONLY) {
+          cy.zoom(ZOOM_THRESHOLDS.CLUSTERS_ONLY - 0.05);
+          cy.center();
+        }
+      }
     }, 600);  // Wait for layout animation to complete
 
     // Cleanup on unmount

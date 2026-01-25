@@ -783,6 +783,16 @@ When providing insights:
         deleted_count = 0
         errors = []
 
+        # 0. Get speaker aliases BEFORE deletion (needed for speaker collection cleanup)
+        speaker_aliases_to_update = []
+        try:
+            from tables.speaker import Speaker
+            speakers = Speaker.query.filter_by(session_device_id=session_device_id).all()
+            speaker_aliases_to_update = [s.alias for s in speakers if s.alias]
+            logger.info(f"Found {len(speaker_aliases_to_update)} speakers to update after session deletion")
+        except Exception as e:
+            logger.warning(f"Could not get speaker aliases for cleanup: {e}")
+
         # 1. Delete from session_collection (legacy)
         try:
             doc_id = f"session_{session_device_id}"
@@ -809,7 +819,7 @@ When providing insights:
 
         # 4. Delete from seven_c_collection
         try:
-            doc_id = f"seven_c_{session_device_id}"
+            doc_id = f"7c_{session_device_id}"  # Must match index_session_7c() format
             self.seven_c_collection.delete(ids=[doc_id])
             deleted_count += 1
         except Exception as e:

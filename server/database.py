@@ -15,14 +15,9 @@ from tables.device import Device
 from tables.session import Session
 from tables.session_device import SessionDevice
 from tables.transcript import Transcript
-from tables.keyword_usage import KeywordUsage
-from tables.keyword_list_item import KeywordListItem
-from tables.keyword_list import KeywordList
-from tables.keyword import Keyword
 from tables.user import User
 from tables.api_client import APIClient
 from tables.folder import Folder
-from tables.topic_model import TopicModel
 from tables.speaker import Speaker
 from tables.speaker_transcript_metrics import SpeakerTranscriptMetrics
 from tables.concept_session import ConceptSession
@@ -30,7 +25,6 @@ from tables.concept_node import ConceptNode
 from tables.concept_edge import ConceptEdge
 from tables.concept_cluster import ConceptCluster
 from tables.cluster_node_mapping import cluster_node_mapping
-from tables.llm_metrics import LLMMetrics
 from tables.seven_cs_analysis import SevenCsAnalysis
 from tables.seven_cs_coded_segment import SevenCsCodedSegment
 # Note: AgentConversation and AgentMessage are imported lazily in functions below
@@ -141,164 +135,6 @@ def delete_speaker_transcript_metrics(id = None, speaker_id = None, transcript_i
           .delete(synchronize_session='fetch')
     db.session.commit()
     return True
-
-# -------------------------
-# Topic Models
-# -------------------------
-
-def get_topic_models(owner_id = None, id = None, name = None):
-  query = db.session.query(TopicModel)
-  if owner_id != None:
-      query = query.filter(TopicModel.owner_id == owner_id)
-  if id != None:
-      return query.filter(TopicModel.id == id).first()
-  if name != None:
-      return query.filter(TopicModel.name == name).first()
-  return query.all()
-
-
-def add_topic_model(user_id, name, summary):
-  topic_model = TopicModel(user_id, name, summary)
-  db.session.add(topic_model)
-  db.session.commit()
-  return topic_model
-
-def update_topic_model(topic_model_id, name=None, summary=None):
-    topic_model = get_topic_models(id=topic_model_id)
-    if topic_model:
-        if name:
-            topic_model.name = name
-        if summary:
-            topic_model.summary = summary
-        db.session.commit()
-        return topic_model
-    return None
-
-def delete_topic_model(topic_model_id):
-  db.session.query(TopicModel).filter(TopicModel.id == topic_model_id).delete(synchronize_session='fetch')
-  db.session.commit()
-  return True
-
-# -------------------------
-# Keyword (Session keywords)
-# -------------------------
-
-def add_session_keyword(session_id, keyword):
-    keyword = Keyword(session_id, keyword)
-    db.session.add(keyword)
-    db.session.commit()
-    return keyword
-
-def bulk_add_session_keyword(session_id, keywords):
-    result = []
-    for keyword in keywords:
-        keyword = Keyword(session_id, keyword)
-        db.session.add(keyword)
-        result.append(keyword)
-    db.session.commit()
-    return result
-
-def get_session_keywords(session_id):
-    return db.session.query(Keyword).filter(Keyword.session_id == session_id).all()
-
-# -------------------------
-# KeywordUsage
-# -------------------------
-
-def add_keyword_usage(transcript_id, word, keyword, similarity):
-    keyword = KeywordUsage(transcript_id, word, keyword, similarity)
-    db.session.add(keyword)
-    db.session.commit()
-    return keyword
-
-def get_keyword_usages(session_id=None, session_device_id=None, start_time=0, end_time=-1):
-    query = db.session.query(KeywordUsage).\
-        filter(Transcript.id == KeywordUsage.transcript_id)
-    if session_id != None:
-        query = query.filter(Transcript.id == KeywordUsage.transcript_id).\
-            filter(Transcript.session_device_id == SessionDevice.id).\
-            filter(SessionDevice.session_id == session_id)
-    if session_device_id:
-        query = query.filter(Transcript.session_device_id == session_device_id)
-    if start_time > 0:
-        query = query.filter(Transcript.start_time >= start_time)
-    if end_time != -1 and end_time > start_time:
-        query = query.filter(Transcript.start_time < end_time)
-    return query.all()
-
-def get_transcript_keyword_usages(transcript_id):
-    return db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id == transcript_id)
-
-
-# -------------------------
-# KeywordLists
-# -------------------------
-
-def get_keyword_lists(id=None, name=None, owner_id=None):
-    query = db.session.query(KeywordList)
-    if owner_id != None:
-        query = query.filter(KeywordList.owner_id == owner_id)
-    if id != None:
-        return query.filter(KeywordList.id == id).first()
-    if name != None:
-        return query.filter(KeywordList.name == name).first()
-    return query.all()
-
-def add_keyword_list(user_id):
-    keyword_list = KeywordList(user_id)
-    db.session.add(keyword_list)
-    db.session.commit()
-    return keyword_list
-
-def update_keyword_list(keyword_list_id, name=None, keywords=None):
-    keyword_list = get_keyword_lists(id=keyword_list_id)
-    if keyword_list:
-        if name != None:
-            keyword_list.name = name
-        if keywords != None:
-            db.session.query(KeywordListItem).filter(KeywordListItem.keyword_list_id == keyword_list_id).delete()
-            for keyword in keywords:
-                add_keyword_list_item(keyword_list_id, keyword)
-        db.session.commit()
-        return keyword_list
-    return None
-
-def delete_keyword_list(keyword_list_id):
-    db.session.query(KeywordListItem).filter(KeywordListItem.keyword_list_id == keyword_list_id).delete(synchronize_session='fetch')
-    db.session.query(KeywordList).filter(KeywordList.id == keyword_list_id).delete(synchronize_session='fetch')
-    db.session.commit()
-    return True
-
-# -------------------------
-# KeywordListItems
-# -------------------------
-
-def get_keyword_list_item(keyword_list_id, keyword):
-    return db.session.query(KeywordListItem).filter(and_(KeywordListItem.keyword_list_id == keyword_list_id, KeywordListItem.keyword == keyword)).first()
-
-def get_keyword_list_items(keyword_list_id, owner_id=None):
-    query = db.session.query(KeywordListItem).filter(KeywordListItem.keyword_list_id == keyword_list_id)
-    if owner_id != None:
-        query = query.filter(KeywordListItem.keyword_list_id == KeywordList.id).filter(KeywordList.owner_id == owner_id)
-    return query.all()
-
-def add_keyword_list_item(keyword_list_id, keyword):
-    duplicate_keyword = get_keyword_list_item(keyword_list_id, keyword)
-    if duplicate_keyword:
-        return None
-    else:
-        keyword = KeywordListItem(keyword_list_id, keyword)
-        db.session.add(keyword)
-        db.session.commit()
-        return keyword
-
-def delete_keyword_list_item(keyword_list_id, keyword):
-    keyword = db.session.query(KeywordListItem).filter(and_(KeywordListItem.keyword_list_id == keyword_list_id, KeywordListItem.keyword == keyword)).first()
-    if keyword:
-        db.session.delete(keyword)
-        db.session.commit()
-        return True
-    return False
 
 # -------------------------
 # Devices
@@ -429,18 +265,12 @@ def get_sessions(id=None, owner_id=None, active=None, folder_ids=None, passcode=
         return query.first()
     return query.all()
 
-def create_session(user_id, keyword_list_id, topic_model_id, name="Unnamed", folder=None):
-    # TODO get the topic model from the db and somehow add it to the discussion.
-    session = Session(user_id, name, folder, topic_model_id)
+def create_session(user_id, keyword_list_id=None, topic_model_id=None, name="Unnamed", folder=None):
+    # keyword_list_id and topic_model_id are deprecated but kept for API compatibility
+    session = Session(user_id, name, folder, None)
     db.session.add(session)
-    keyword_list_items = get_keyword_list_items(keyword_list_id, owner_id=user_id)
-    keywords = []
-    for keyword_list_item in keyword_list_items:
-        keyword = Keyword(session.id, keyword_list_item.keyword)
-        keywords.append(keyword)
-        db.session.add(keyword)
     db.session.commit()
-    return session, keywords
+    return session, []  # Second element kept for API compatibility
 
 def delete_session(session_id):
     session_to_delete = get_sessions(id=session_id, active=True)
@@ -452,8 +282,19 @@ def delete_session(session_id):
             filter(Transcript.session_device_id == SessionDevice.id).\
             filter(SessionDevice.session_id == session_id).subquery()
 
-        # Get session devices to delete their LLMMetrics
+        # Get session devices for cleanup
         session_devices = db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).all()
+
+        # Collect speaker aliases BEFORE deletion (for ChromaDB speaker re-indexing)
+        speaker_aliases_to_update = set()
+        try:
+            for device in session_devices:
+                speakers = Speaker.query.filter_by(session_device_id=device.id).all()
+                for speaker in speakers:
+                    if speaker.alias:
+                        speaker_aliases_to_update.add(speaker.alias)
+        except Exception as e:
+            logging.warning(f"Could not collect speaker aliases for re-indexing: {e}")
 
         # Clean up RAG indexes for each session device
         try:
@@ -467,19 +308,39 @@ def delete_session(session_id):
             # Don't fail the deletion if RAG cleanup fails
 
         # Delete related data in correct order to avoid foreign key constraints
-        db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id.in_(sub_query)).delete(synchronize_session='fetch')
-        db.session.query(Keyword).filter(Keyword.session_id == session_id).delete()
         db.session.query(Transcript).filter(Transcript.id.in_(sub_query)).delete(synchronize_session='fetch')
 
-        # Delete LLMMetrics before deleting SessionDevice (foreign key constraint)
-        for device in session_devices:
-            db.session.query(LLMMetrics).filter(LLMMetrics.session_device_id == device.id).delete()
-
-        # Now safe to delete SessionDevice and Session
+        # Delete SessionDevice and Session
         db.session.query(SessionDevice).filter(SessionDevice.session_id == session_id).delete()
         db.session.query(Session).filter(Session.id == session_id).delete()
 
         db.session.commit()
+
+        # AFTER MySQL delete: Re-index or delete speakers from ChromaDB
+        # Speakers are indexed cross-session, so we need to update their profiles
+        if speaker_aliases_to_update:
+            try:
+                from rag_service import RAGService
+                from speaker_serializer import SpeakerSerializer
+                rag_service = RAGService()
+                speaker_serializer = SpeakerSerializer()
+
+                for alias in speaker_aliases_to_update:
+                    # Check if speaker still exists in other sessions
+                    remaining_speaker = Speaker.query.filter_by(alias=alias).first()
+                    if remaining_speaker:
+                        # Re-index with updated data (excluding deleted session)
+                        speaker_data = speaker_serializer.serialize_speaker(alias)
+                        if speaker_data:
+                            rag_service.index_speaker(alias, speaker_data)
+                            logging.info(f"Re-indexed speaker {alias} after session deletion")
+                    else:
+                        # Speaker no longer exists in any session - delete from ChromaDB
+                        rag_service.delete_speaker_index(alias)
+                        logging.info(f"Deleted speaker {alias} from ChromaDB (no longer in any session)")
+            except Exception as e:
+                logging.warning(f"Failed to update speaker indexes after session deletion: {e}")
+
         return True, "Session deleted successfully"
     except Exception as e:
         db.session.rollback()
@@ -560,7 +421,6 @@ def set_session_device_status(session_device_id, status):
     return False
 
 def delete_session_device(session_device_id):
-    db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id == Transcript.id).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.query(Transcript).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.query(SessionDevice).filter(SessionDevice.id == session_device_id).delete()
     db.session.commit()
@@ -667,101 +527,11 @@ def get_transcripts(session_id=None, session_device_id=None, start_time=0, end_t
     return query.all()
 
 def delete_device_transcripts(session_device_id):
-    db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id == Transcript.id).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.query(Transcript).filter(Transcript.session_device_id == session_device_id).delete(synchronize_session='fetch')
     db.session.commit()
 
 
 # -------------------------
-# LLM Metrics
-# -------------------------
-
-def get_llm_metrics(id=None, session_device_id=None):
-    """Get LLM metrics by id or session_device_id"""
-    query = db.session.query(LLMMetrics)
-    if id is not None:
-        return query.filter(LLMMetrics.id == id).first()
-    if session_device_id is not None:
-        return query.filter(LLMMetrics.session_device_id == session_device_id).first()
-    return query.all()
-
-def add_llm_metrics(session_device_id, scores_dict, explanations_dict, transcript_count, llm_model='gpt-4o'):
-    """Add new LLM metrics for a session device"""
-    # Check if metrics already exist for this session_device
-    existing = get_llm_metrics(session_device_id=session_device_id)
-    if existing:
-        return update_llm_metrics(
-            existing.id, 
-            scores_dict=scores_dict, 
-            explanations_dict=explanations_dict,
-            transcript_count=transcript_count,
-            llm_model=llm_model
-        )
-    
-    metrics = LLMMetrics(
-        session_device_id=session_device_id,
-        emotional_tone_score=scores_dict.get('emotional_tone', None),
-        analytic_thinking_score=scores_dict.get('analytic_thinking', None),
-        clout_score=scores_dict.get('clout', None),
-        authenticity_score=scores_dict.get('authenticity', None),
-        certainty_score=scores_dict.get('certainty', None),
-        emotional_tone_explanation=explanations_dict.get('emotional_tone', ''),
-        analytic_thinking_explanation=explanations_dict.get('analytic_thinking', ''),
-        clout_explanation=explanations_dict.get('clout', ''),
-        authenticity_explanation=explanations_dict.get('authenticity', ''),
-        certainty_explanation=explanations_dict.get('certainty', ''),
-        transcript_count=transcript_count,
-        llm_model=llm_model
-    )
-    db.session.add(metrics)
-    db.session.commit()
-    return metrics
-
-def update_llm_metrics(id, scores_dict=None, explanations_dict=None, transcript_count=None, llm_model=None):
-    """Update existing LLM metrics"""
-    metrics = get_llm_metrics(id=id)
-    if not metrics:
-        return None
-    
-    if scores_dict:
-        if 'emotional_tone' in scores_dict:
-            metrics.emotional_tone_score = scores_dict['emotional_tone']
-        if 'analytic_thinking' in scores_dict:
-            metrics.analytic_thinking_score = scores_dict['analytic_thinking']
-        if 'clout' in scores_dict:
-            metrics.clout_score = scores_dict['clout']
-        if 'authenticity' in scores_dict:
-            metrics.authenticity_score = scores_dict['authenticity']
-        if 'certainty' in scores_dict:
-            metrics.certainty_score = scores_dict['certainty']
-    
-    if explanations_dict:
-        if 'emotional_tone' in explanations_dict:
-            metrics.emotional_tone_explanation = explanations_dict['emotional_tone']
-        if 'analytic_thinking' in explanations_dict:
-            metrics.analytic_thinking_explanation = explanations_dict['analytic_thinking']
-        if 'clout' in explanations_dict:
-            metrics.clout_explanation = explanations_dict['clout']
-        if 'authenticity' in explanations_dict:
-            metrics.authenticity_explanation = explanations_dict['authenticity']
-        if 'certainty' in explanations_dict:
-            metrics.certainty_explanation = explanations_dict['certainty']
-    
-    if transcript_count is not None:
-        metrics.transcript_count = transcript_count
-    if llm_model is not None:
-        metrics.llm_model = llm_model
-    
-    metrics.updated_at = datetime.utcnow()
-    db.session.commit()
-    return metrics
-
-def delete_llm_metrics(id):
-    """Delete LLM metrics by id"""
-    db.session.query(LLMMetrics).filter(LLMMetrics.id == id).delete(synchronize_session='fetch')
-    db.session.commit()
-    return True
-
 # -------------------------
 # User
 # -------------------------
@@ -789,14 +559,9 @@ def delete_user(id):
     user = get_users(id=id)
     if user:
         delete_api_client(user.id)
-        keywordListItemSubQuery = db.session.query(KeywordList.id).filter(KeywordList.owner_id == id).subquery()
         transcriptSubQuery = db.session.query(Transcript.id).filter(Transcript.session_device_id == SessionDevice.id).filter(SessionDevice.session_id == Session.id).filter(Session.owner_id == id).subquery()
         sessionSubQuery = db.session.query(Session.id).filter(Session.owner_id == id).subquery()
-        db.session.query(KeywordListItem).filter(KeywordListItem.keyword_list_id.in_(keywordListItemSubQuery)).delete(synchronize_session='fetch')
-        db.session.query(KeywordList).filter(KeywordList.owner_id == id).delete()
-        db.session.query(KeywordUsage).filter(KeywordUsage.transcript_id.in_(transcriptSubQuery)).delete(synchronize_session='fetch')
         db.session.query(Transcript).filter(Transcript.id.in_(transcriptSubQuery)).delete(synchronize_session='fetch')
-        db.session.query(Keyword).filter(Keyword.session_id.in_(sessionSubQuery)).delete(synchronize_session='fetch')
         db.session.query(SessionDevice).filter(SessionDevice.session_id.in_(sessionSubQuery)).delete(synchronize_session='fetch')
         db.session.query(Session).filter(Session.owner_id == id).delete()
         folder_ids = [folder.id for folder in db.session.query(Folder).filter(Folder.owner_id == id).all()]
