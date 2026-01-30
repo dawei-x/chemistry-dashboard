@@ -6,7 +6,7 @@ Simplified Tool Registry for BLINC Agent V7
 2. search_sessions    - Find sessions by topic
 3. get_transcript     - Get session transcript
 4. get_concept_map    - Get concept map structure
-5. get_7c_analysis    - Get collaboration metrics
+5. get_collaboration_assessment - Get collaboration metrics
 
 Design principle: Tools return what the LLM should see directly.
 No intermediate JSON that gets formatted later - this prevents data loss.
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# 7C Framework Definitions (included in tool output for LLM context)
+# Collaboration Framework Definitions (included in tool output for LLM context)
 # =============================================================================
 
 SEVEN_C_DEFINITIONS = {
@@ -115,7 +115,7 @@ def list_sessions() -> Dict[str, Any]:
 
     # Add guidance for LLM
     lines.append("---")
-    lines.append("TIP: For detailed collaboration breakdown, call get_7c_analysis(discussion_id=N)")
+    lines.append("TIP: For detailed collaboration breakdown, call get_collaboration_assessment(discussion_id=N)")
     lines.append("TIP: For speaker contributions, call get_speaker_profile(speaker_name='Name')")
 
     return {
@@ -141,6 +141,7 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
     Returns:
         Dict with 'display' containing LLM-ready text of matching sessions
     """
+    top_k = max(top_k, 5)  # Never return fewer than 5 results
     result = _search_sessions(query=query, top_k=top_k)
 
     sessions = result.get('sessions', [])
@@ -151,6 +152,13 @@ def search_sessions(query: str, top_k: int = 5) -> Dict[str, Any]:
     if not sessions:
         lines.append("No matching discussions found.")
     else:
+        # Check if scores are tightly clustered — if so, tell the LLM
+        scores = [s.get('relevance_score') or s.get('best_match_score') or s.get('score', 0) for s in sessions]
+        if len(scores) >= 3 and scores[0] > 0:
+            spread = scores[0] - scores[-1]
+            if spread < 0.01:
+                lines.append("Note: All results are very close in relevance — explore broadly, not just the top 1-2.\n")
+
         for i, s in enumerate(sessions, 1):
             sid = s.get('session_id', s.get('session_device_id', '?'))
             name = s.get('session_name', s.get('name', 'Unnamed'))
@@ -410,29 +418,29 @@ def get_concept_map(discussion_id: int) -> Dict[str, Any]:
 
 
 # =============================================================================
-# Tool 5: get_7c_analysis
+# Tool 5: get_collaboration_assessment
 # =============================================================================
 
-@tool_wrapper("get_7c_analysis")
-def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
+@tool_wrapper("get_collaboration_assessment")
+def get_collaboration_assessment(discussion_id: int) -> Dict[str, Any]:
     """
-    Get 7C collaboration analysis with scores and evidence.
+    Get collaboration assessment with scores and supporting segments.
 
-    The 7C Framework measures collaboration quality across 7 dimensions.
-    Each dimension includes a score (0-100), explanation, and coded segments
-    (actual quotes demonstrating the dimension).
+    Measures collaboration quality across 7 dimensions.
+    Each dimension includes a score (0-100), explanation, and supporting segments
+    (text excerpts demonstrating the dimension).
 
     Args:
-        discussion_id: Discussion to get analysis for
+        discussion_id: Discussion to get assessment for
 
     Returns:
-        Dict with 'display' containing LLM-ready 7C analysis
+        Dict with 'display' containing LLM-ready collaboration assessment
     """
     result = _get_artifacts(discussion_id, include=['collaboration'])
 
     if result.get('error'):
         return {
-            "display": f"Error getting 7C analysis: {result.get('error')}",
+            "display": f"Error getting collaboration assessment: {result.get('error')}",
             "error": result.get('error'),
         }
 
@@ -444,7 +452,7 @@ def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
 
     if not collaboration.get('available', False):
         return {
-            "display": f"No 7C analysis available for {session_name}",
+            "display": f"No collaboration assessment available for {session_name}",
             "discussion_id": discussion_id,
             "available": False,
         }
@@ -458,11 +466,11 @@ def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
     # Build LLM-ready text - include device name in title
     title = f"{session_name} ({device_name})" if device_name else session_name
     lines = [
-        f"=== 7C Collaboration Analysis: {title} ===",
+        f"=== Collaboration Assessment: {title} ===",
         f"Discussion ID: {discussion_id}",
         f"Overall Score: {overall_score:.1f}/100",
         "",
-        "The 7C Framework measures collaboration quality across 7 dimensions.",
+        "Collaboration quality measured across 7 dimensions.",
         "",
     ]
 
@@ -476,7 +484,7 @@ def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
         lines.append(f"Definition: {definition}")
         lines.append(f"Explanation: {explanation}")
 
-        # Add coded segments (evidence quotes)
+        # Add supporting segments (evidence)
         raw_segments = dim_data.get('coded_segments', [])
         quote_count = 0
 
@@ -499,7 +507,7 @@ def get_7c_analysis(discussion_id: int) -> Dict[str, Any]:
 
         lines.append("")
 
-    lines.append("=== End 7C Analysis ===")
+    lines.append("=== End Collaboration Assessment ===")
 
     return {
         "display": "\n".join(lines),
@@ -807,7 +815,7 @@ CORE_TOOLS = {
     "search_sessions": search_sessions,
     "get_transcript": get_transcript,
     "get_concept_map": get_concept_map,
-    "get_7c_analysis": get_7c_analysis,
+    "get_collaboration_assessment": get_collaboration_assessment,
     "get_speaker_profile": get_speaker_profile,
 }
 
@@ -843,7 +851,7 @@ TOOL_SCHEMAS = [
         "type": "function",
         "function": {
             "name": "list_sessions",
-            "description": "List all sessions with collaboration scores (0-100). USE FIRST for superlative/comparison queries (best/worst/compare). Shows scores to identify top candidates, then call get_7c_analysis for detailed breakdown.",
+            "description": "List all sessions with collaboration scores (0-100). USE FIRST for superlative/comparison queries (best/worst/compare). Shows scores to identify top candidates, then call get_collaboration_assessment for detailed breakdown.",
             "parameters": {"type": "object", "properties": {}}
         }
     },
@@ -895,8 +903,8 @@ TOOL_SCHEMAS = [
     {
         "type": "function",
         "function": {
-            "name": "get_7c_analysis",
-            "description": "Get detailed 7C collaboration analysis (scores 0-100 + evidence quotes). REQUIRED for collaboration assessment. Call after list_sessions identifies top candidates.",
+            "name": "get_collaboration_assessment",
+            "description": "Get detailed collaboration assessment (scores 0-100 for 7 dimensions + supporting segments). REQUIRED for collaboration quality analysis. Call after list_sessions identifies top candidates.",
             "parameters": {
                 "type": "object",
                 "properties": {

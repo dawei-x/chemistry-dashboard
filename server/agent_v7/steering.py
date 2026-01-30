@@ -3,7 +3,7 @@ User Steering for BLINC Agent V7
 
 Simple approach: Pass user preferences to the LLM and let it understand.
 No regex parsing - the LLM is smart enough to understand
-"focus on concept map, don't use 7C" without pattern matching.
+"focus on concept map, don't use collaboration assessment" without pattern matching.
 """
 
 import logging
@@ -83,7 +83,7 @@ def validate_tool_call(tool_name: str, steering: SteeringDirectives) -> tuple[bo
 
     # Simple mapping for API-level exclusions
     tool_to_artifact = {
-        'get_7c_analysis': ['7c', 'collaboration'],
+        'get_collaboration_assessment': ['7c', 'collaboration'],
         'get_concept_map': ['concept_map'],
         'get_transcript': ['transcript'],
     }

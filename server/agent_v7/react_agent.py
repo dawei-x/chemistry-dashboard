@@ -41,25 +41,58 @@ MAX_ITERATIONS = 8
 # Maximum evidence items to include in context
 MAX_EVIDENCE_ITEMS = 20
 
-# Session name to ID mapping (for query-aware response gating)
-SESSION_NAME_MAPPING = {
-    "living in nyc": 18,
-    "living in new york": 18,
-    "nyc": 18,
-    "is ai alive": 19,
-    "ai alive": 19,
-    "nuclear fusion": 20,
-    "fusion": 20,
-    "shaw interview": 21,
-    "shaw": 21,
-    "collaboration literacy": 22,
-    "collab literacy": 22,
-    "dinosaurs": 23,
-    "country music": 24,
-    "abundance": 25,
-    "cfaa discussion": 26,
-    "cfaa": 26,
-}
+# Dynamic session name to ID mapping (loaded from DB)
+_session_name_cache = None
+_session_name_cache_time = 0
+SESSION_NAME_CACHE_TTL = 300  # 5 minutes
+
+def get_session_name_mapping() -> dict:
+    """Load session name → ID mapping dynamically from the database."""
+    global _session_name_cache, _session_name_cache_time
+    import time
+
+    if _session_name_cache is not None and (time.time() - _session_name_cache_time) < SESSION_NAME_CACHE_TTL:
+        return _session_name_cache
+
+    try:
+        import mysql.connector
+        conn = mysql.connector.connect(
+            host='localhost', user='vagrant', password='vagrant', database='discussion_capture'
+        )
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT sd.id, s.name, sd.name as device_name
+            FROM session_device sd
+            JOIN session s ON sd.session_id = s.id
+            WHERE s.name IS NOT NULL
+        """)
+        mapping = {}
+        for sd_id, session_name, device_name in cursor.fetchall():
+            # Map session name to session_device id
+            name_lower = session_name.lower()
+            # For multi-device sessions, each device gets its own entry
+            # Later matches overwrite earlier ones, but device_name is more specific
+            if name_lower not in mapping:
+                mapping[name_lower] = sd_id
+            # Map device name (e.g., "midnight", "kha4", "dev30")
+            if device_name:
+                mapping[device_name.lower()] = sd_id
+            # Add abbreviated session name forms
+            words = name_lower.split()
+            if len(words) > 1:
+                if len(words[0]) >= 4 and words[0] not in mapping:
+                    mapping[words[0]] = sd_id
+        cursor.close()
+        conn.close()
+
+        _session_name_cache = mapping
+        _session_name_cache_time = time.time()
+        logger.debug(f"[Sessions] Loaded {len(mapping)} session name mappings from database")
+        return mapping
+
+    except Exception as e:
+        logger.warning(f"[Sessions] Failed to load from database: {e}")
+        return _session_name_cache or {}
 
 # =============================================================================
 # Query Classification Patterns
@@ -231,11 +264,14 @@ TOOL_ALIASES = {
     'concept_map': 'get_concept_map',
     'conceptmap': 'get_concept_map',
     'map': 'get_concept_map',
-    '7c': 'get_7c_analysis',
-    '7c scores': 'get_7c_analysis',
-    '7c analysis': 'get_7c_analysis',
-    'collaboration metrics': 'get_7c_analysis',
-    'collab metrics': 'get_7c_analysis',
+    '7c': 'get_collaboration_assessment',
+    '7c scores': 'get_collaboration_assessment',
+    '7c analysis': 'get_collaboration_assessment',
+    'collaboration metrics': 'get_collaboration_assessment',
+    'collab metrics': 'get_collaboration_assessment',
+    'collaboration assessment': 'get_collaboration_assessment',
+    'collab assessment': 'get_collaboration_assessment',
+    'get_7c_analysis': 'get_collaboration_assessment',
     'speaker profile': 'get_speaker_profile',
     'speaker profiles': 'get_speaker_profile',
 }
@@ -307,7 +343,7 @@ class ScaffoldingAgent:
             'search_sessions': make_tool_fn('search_sessions'),
             'get_transcript': make_tool_fn('get_transcript'),
             'get_concept_map': make_tool_fn('get_concept_map'),
-            'get_7c_analysis': make_tool_fn('get_7c_analysis'),
+            'get_collaboration_assessment': make_tool_fn('get_collaboration_assessment'),
             'get_speaker_profile': make_tool_fn('get_speaker_profile'),
         }
 
@@ -350,6 +386,7 @@ class ScaffoldingAgent:
         session_id = self.memory.extract_session_from_text(query)
         if session_id and session_id != self.memory.session_focus:
             self.memory.update_session_focus(session_id)
+            self.memory.session_focus_from_query = True
 
         speaker = self.memory.extract_speaker_from_text(query)
         if speaker and speaker != self.memory.speaker_focus:
@@ -488,7 +525,7 @@ class ScaffoldingAgent:
                 # The system prompt guides the LLM to fetch artifacts after discovery tools
 
                 # Record artifact retrieval in memory
-                if tool_call.name in ['get_transcript', 'get_concept_map', 'get_7c_analysis']:
+                if tool_call.name in ['get_transcript', 'get_concept_map', 'get_collaboration_assessment']:
                     session_id = tool_call.params.get('discussion_id')
                     if session_id:
                         artifact_type = tool_call.name.replace('get_', '').replace('_analysis', '')
@@ -527,7 +564,7 @@ class ScaffoldingAgent:
         - "only transcript" -> allowed_tools = {get_transcript}
         - "not transcripts" -> blocked_tools = {get_transcript}
         - "focus on concept map" -> focus_tools = {get_concept_map}
-        - "only collaboration metrics, not transcripts" -> allowed_tools = {get_7c_analysis}, blocked_tools = {get_transcript}
+        - "only collaboration metrics, not transcripts" -> allowed_tools = {get_collaboration_assessment}, blocked_tools = {get_transcript}
 
         Returns:
             QueryConstraints with allowed/blocked/focus tools
@@ -594,24 +631,25 @@ class ScaffoldingAgent:
         # =================================================================
         # ARTIFACT MENTION DETECTION
         # If user explicitly mentions an artifact in query, ensure it's retrieved
-        # e.g., "The 7C shows X" → should retrieve 7C to verify
+        # e.g., "The collaboration assessment shows X" → should retrieve to verify
         # =================================================================
         mentioned_tools = set()
 
         # Patterns for artifact mentions (not steering commands, just mentions)
+        artifact_group = r'(7c|7c\s+scores?|7c\s+analysis|collaboration\s+(?:assessment|scores?|analysis)|transcript|concept\s*map)'
         mention_patterns = [
-            # "The 7C shows/indicates/reveals..."
-            r'(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)\s+(?:shows?|indicates?|reveals?|suggests?)',
-            # "...according to the 7C/transcript/concept map"
-            r'according\s+to\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
-            # "...based on the 7C/transcript/concept map"
-            r'based\s+on\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
-            # "...from the 7C/transcript/concept map"
-            r'from\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
-            # "...in the 7C/transcript/concept map"
-            r'in\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)',
-            # "what does the transcript/7C/concept map reveal/show"
-            r'what\s+does\s+(?:the\s+)?(7c|7c\s+scores?|7c\s+analysis|transcript|concept\s*map)\s+(?:reveal|show|indicate)',
+            # "The collaboration assessment shows/indicates/reveals..."
+            r'(?:the\s+)?' + artifact_group + r'\s+(?:shows?|indicates?|reveals?|suggests?)',
+            # "...according to the collaboration assessment/transcript/concept map"
+            r'according\s+to\s+(?:the\s+)?' + artifact_group,
+            # "...based on the collaboration assessment/transcript/concept map"
+            r'based\s+on\s+(?:the\s+)?' + artifact_group,
+            # "...from the collaboration assessment/transcript/concept map"
+            r'from\s+(?:the\s+)?' + artifact_group,
+            # "...in the collaboration assessment/transcript/concept map"
+            r'in\s+(?:the\s+)?' + artifact_group,
+            # "what does the transcript/collaboration assessment/concept map reveal/show"
+            r'what\s+does\s+(?:the\s+)?' + artifact_group + r'\s+(?:reveal|show|indicate)',
         ]
 
         for pattern in mention_patterns:
@@ -642,8 +680,8 @@ class ScaffoldingAgent:
         Examples:
             "transcript" -> "get_transcript"
             "concept map" -> "get_concept_map"
-            "7C scores" -> "get_7c_analysis"
-            "collaboration metrics" -> "get_7c_analysis"
+            "7C scores" -> "get_collaboration_assessment"
+            "collaboration metrics" -> "get_collaboration_assessment"
         """
         phrase_lower = phrase.lower().strip()
 
@@ -673,7 +711,7 @@ class ScaffoldingAgent:
 
         Note: Discovery tools (list_sessions, search_sessions) are always allowed
         since they're needed for finding which sessions to query. The constraints
-        only apply to artifact tools (get_transcript, get_concept_map, get_7c_analysis).
+        only apply to artifact tools (get_transcript, get_concept_map, get_collaboration_assessment).
         """
         # Discovery tools are always allowed - they help find sessions
         discovery_tools = {'list_sessions', 'search_sessions'}
@@ -717,7 +755,13 @@ class ScaffoldingAgent:
         # Format evidence for context
         evidence_str = self._format_evidence_for_context(evidence)
 
-        user_message = f"""Query: {query}
+        # Inject resolved session_focus only if the user's query explicitly named a session
+        # (not if it was auto-set from tool results, which would anchor multi-session queries)
+        session_hint = ""
+        if self.memory.session_focus and self.memory.session_focus_from_query:
+            session_hint = f"\n\nNote: The query refers to discussion_id={self.memory.session_focus}. Use this ID for tool calls."
+
+        user_message = f"""Query: {query}{session_hint}
 
 Evidence gathered so far:
 {evidence_str if evidence_str else "None yet"}
@@ -729,26 +773,23 @@ Before deciding your action, reason about:
 
 Use this format:
 
-THOUGHT: [Your reasoning about evidence, gaps, and next step]
-ACTION: respond
-RESPONSE: [Your complete answer with citations]
+IMPORTANT: Always write your reasoning as text content BEFORE making a tool call or responding.
+This reasoning trace is required — never skip it.
 
-OR
-
-THOUGHT: [Your reasoning about evidence, gaps, and next step]
-ACTION: tool_call
-TOOL: [tool_name]
-PARAMS: {{"param": "value"}}
+If you have enough evidence, respond directly in your text content.
+If you need more data, write your reasoning then call the appropriate tool.
 
 IMPORTANT: Make ONE tool call at a time. If you need data from multiple sessions,
 call the tool once, then in the next turn call it again for the next session.
-Use the actual tool name like "get_7c_analysis" or "list_sessions", not wrapper names.
+Use the actual tool name like "get_collaboration_assessment" or "list_sessions", not wrapper names.
 
 Examples of good THOUGHT traces:
-- "I have list_sessions results showing 10 sessions. The user asked for the best collaboration. I need 7C details from top 2-3 sessions before I can justify which is best."
-- "I have 7C analysis for session 19 (Is AI Alive) but the user asked to compare with Nuclear Fusion (session 20). I must get 7C for session 20 before comparing."
+- "I have list_sessions results showing 10 sessions. The user asked for the best collaboration. I need collaboration assessment details from top 2-3 sessions before I can justify which is best."
+- "I have collaboration assessment for session 19 (Is AI Alive) but the user asked to compare with Nuclear Fusion (session 20). I must get collaboration assessment for session 20 before comparing."
 - "I have speaker profile for Tucker showing participation stats, but no actual quotes. I should fetch transcript filtered by speaker to get his words."
 - "I have detailed evidence from both sessions the user asked about. I can now provide a complete comparison with specific citations."
+- "I have collaboration assessment but the user asked about 'evidence of critical thinking' — collaboration dimension scores and brief segments aren't enough. I need to fetch the full transcript to find actual moments of critical thinking in the discussion."
+- "search_sessions returned multiple sessions. I've only fetched data from one session so far, but the user asked a thematic question — I need to fetch transcripts from at least the top 2-3 matching sessions before I can give a comprehensive answer across discussions."
 """
 
         messages = [
@@ -767,6 +808,11 @@ Examples of good THOUGHT traces:
 
             # Check if LLM made a tool call
             if response.finish_reason == "tool_calls" and response.raw_response:
+                # Capture THOUGHT trace from content (ReAct reasoning)
+                thought = response.content.strip() if response.content else ""
+                if thought:
+                    logger.info(f"[Agent] THOUGHT: {thought[:500]}")
+
                 tool_calls = response.raw_response.get("tool_calls", [])
                 valid_tool_names = get_tool_names()
 
@@ -789,7 +835,7 @@ Examples of good THOUGHT traces:
                         tool_call=ToolCall(
                             name=tool_name,
                             params=params,
-                            reason="LLM tool call"
+                            reason=thought or "LLM tool call"
                         )
                     )
 
@@ -904,7 +950,7 @@ Evidence:
 {evidence_str}
 
 Instructions:
-1. Point to SPECIFIC evidence (exact quotes, coded segments, concept nodes)
+1. Point to SPECIFIC evidence (exact quotes, supporting segments, concept nodes)
 2. Explain WHY the evidence is relevant
 3. Use natural language ("You can see this in...", "Notice how...")
 4. If evidence is incomplete, acknowledge what couldn't be determined
@@ -925,7 +971,7 @@ Write a conversational response that guides the user through the evidence."""
         try:
             response = self.llm.complete(
                 messages=messages,
-                temperature=0.4,
+                temperature=0.6,
                 max_tokens=3000
             )
             return response.content
@@ -940,7 +986,7 @@ Write a conversational response that guides the user through the evidence."""
         Tool-type-aware formatting:
         - Discovery tools (list_sessions, search_sessions, get_speaker_profile):
           Full display to ensure all sessions/entities are visible for decision-making
-        - Detail tools (get_transcript, get_concept_map, get_7c_analysis):
+        - Detail tools (get_transcript, get_concept_map, get_collaboration_assessment):
           Structured summary with key metadata (saves tokens, signals "data retrieved")
         """
         if not evidence:
@@ -1008,9 +1054,9 @@ Write a conversational response that guides the user through the evidence."""
                 return f"{title}: No concept map available"
             return f"{title}: {node_count} nodes, {edge_count} edges"
 
-        elif tool == "get_7c_analysis":
+        elif tool == "get_collaboration_assessment":
             if not result.get("available", True):
-                return f"{title}: No 7C analysis available"
+                return f"{title}: No collaboration assessment available"
             overall_score = result.get("overall_score", 0)
             dimensions = result.get("dimensions", {})
 
@@ -1071,8 +1117,8 @@ Write a conversational response that guides the user through the evidence."""
         query_lower = query.lower()
         sessions = set()
 
-        # Check for session names
-        for name, session_id in SESSION_NAME_MAPPING.items():
+        # Check for session names (dynamically loaded from DB)
+        for name, session_id in get_session_name_mapping().items():
             if name in query_lower:
                 sessions.add(session_id)
 
@@ -1168,7 +1214,7 @@ Write a conversational response that guides the user through the evidence."""
                 )
 
         # 2. Check for CORRELATION patterns (specific type of hypothesis)
-        # These need 7C data from multiple sessions to test patterns
+        # These need collaboration data from multiple sessions to test patterns
         for pattern in CORRELATION_PATTERNS:
             if re.search(pattern, query_lower, re.IGNORECASE):
                 return QueryClassification(
@@ -1364,7 +1410,7 @@ Write a conversational response that guides the user through the evidence."""
         return speakers
 
     def _get_sessions_with_7c(self, evidence: List[Dict]) -> Set[int]:
-        """Extract session IDs that have 7C analysis retrieved."""
+        """Extract session IDs that have collaboration assessment retrieved."""
         sessions = set()
 
         for e in evidence:
@@ -1374,7 +1420,7 @@ Write a conversational response that guides the user through the evidence."""
             tool = e.get("tool", "")
             params = e.get("params", {})
 
-            if tool == "get_7c_analysis":
+            if tool == "get_collaboration_assessment":
                 session_id = params.get("discussion_id")
                 if session_id:
                     sessions.add(session_id)
@@ -1415,7 +1461,7 @@ Write a conversational response that guides the user through the evidence."""
             for e in evidence if e.get("type") != "steering_block"
         )
         has_detailed_data = any(
-            e.get("tool") in ["get_7c_analysis", "get_concept_map", "get_transcript"]
+            e.get("tool") in ["get_collaboration_assessment", "get_concept_map", "get_transcript"]
             for e in evidence if e.get("type") != "steering_block"
         )
         has_speaker_data = any(
@@ -1441,7 +1487,7 @@ Write a conversational response that guides the user through the evidence."""
 
         # =================================================================
         # CONSTRAINT-DRIVEN COMPLETENESS: Check if constrained tools used
-        # This ensures "only collaboration metrics" actually calls get_7c_analysis
+        # This ensures "only collaboration metrics" actually calls get_collaboration_assessment
         # =================================================================
         constraints = self._extract_constraints(query)
         if constraints.allowed_tools:
@@ -1506,7 +1552,7 @@ Write a conversational response that guides the user through the evidence."""
                 }
             return {**base_result, 'missing_sessions': set(), 'missing_speakers': set(), 'complete': True, 'reason': None}
 
-        # CORRELATION: Need 7C from at least 3 sessions to test pattern
+        # CORRELATION: Need collaboration data from at least 3 sessions to test pattern
         if classification.query_type == 'correlation':
             sessions_with_7c = self._get_sessions_with_7c(evidence)
             if not has_list_overview:
@@ -1524,8 +1570,8 @@ Write a conversational response that guides the user through the evidence."""
                     'missing_sessions': set(),
                     'sessions_with_7c': sessions_with_7c,
                     'complete': False,
-                    'reason': f'Need 7C data from at least 3 sessions to test correlation (have {len(sessions_with_7c)})',
-                    'next_action': 'get_7c_analysis'
+                    'reason': f'Need collaboration data from at least 3 sessions to test correlation (have {len(sessions_with_7c)})',
+                    'next_action': 'get_collaboration_assessment'
                 }
             return {**base_result, 'missing_sessions': set(), 'sessions_with_7c': sessions_with_7c, 'complete': True, 'reason': None}
 
@@ -1608,7 +1654,7 @@ Write a conversational response that guides the user through the evidence."""
                     'missing_sessions': set(),
                     'complete': False,
                     'reason': 'Need detailed data for top candidates',
-                    'next_action': 'get_7c_analysis'
+                    'next_action': 'get_collaboration_assessment'
                 }
             if len(retrieved_sessions) < classification.min_sessions_needed:
                 return {
@@ -1616,7 +1662,7 @@ Write a conversational response that guides the user through the evidence."""
                     'missing_sessions': set(),
                     'complete': False,
                     'reason': f'Need detailed data for at least {classification.min_sessions_needed} sessions',
-                    'next_action': 'get_7c_analysis'
+                    'next_action': 'get_collaboration_assessment'
                 }
             return {**base_result, 'missing_sessions': set(), 'complete': True, 'reason': None}
 
@@ -1657,6 +1703,20 @@ Write a conversational response that guides the user through the evidence."""
                     'missing_sessions': missing,
                     'complete': False,
                     'reason': f'Need data for session(s): {missing}'
+                }
+            # Check if we have transcript - for unconstrained queries, having only
+            # non-transcript artifacts is usually insufficient (need actual dialogue)
+            has_transcript = any(
+                e.get("tool") == "get_transcript"
+                for e in evidence if e.get("type") != "steering_block"
+            )
+            if not has_transcript and not constraints.allowed_tools:
+                return {
+                    **base_result,
+                    'missing_sessions': set(),
+                    'complete': False,
+                    'reason': 'Have artifact data but no transcript - fetch transcript for direct quotes',
+                    'next_action': 'get_transcript'
                 }
             return {**base_result, 'missing_sessions': set(), 'complete': True, 'reason': None}
 
@@ -1744,7 +1804,7 @@ Write a conversational response that guides the user through the evidence."""
                         reason=f"Get profile for speaker '{speaker_name}'"
                     )
                 )
-            elif next_action in ['get_artifact', 'get_7c_analysis']:
+            elif next_action in ['get_artifact', 'get_collaboration_assessment']:
                 # Need to get artifact for a session - find one from search results or use top session
                 session_id = self._get_session_to_retrieve(analysis, query)
                 tool_name = self._select_artifact_tool(query)
@@ -1816,20 +1876,20 @@ Write a conversational response that guides the user through the evidence."""
                     )
                 )
 
-        # For correlation queries needing more 7C data
+        # For correlation queries needing more collaboration data
         query_type = analysis.get('query_type', '')
         if query_type == 'correlation' and not analysis['complete']:
             sessions_with_7c = analysis.get('sessions_with_7c', set())
-            # Get next session that doesn't have 7C yet
+            # Get next session that doesn't have collaboration assessment yet
             top_sessions = [24, 20, 21, 25, 18, 19, 23, 22, 26]  # Varied by collaboration score
             for session_id in top_sessions:
                 if session_id not in sessions_with_7c:
                     return AgentAction(
                         action_type="tool_call",
                         tool_call=ToolCall(
-                            name="get_7c_analysis",
+                            name="get_collaboration_assessment",
                             params={"discussion_id": session_id},
-                            reason=f"Get 7C analysis for session {session_id} (need {3 - len(sessions_with_7c)} more for correlation)"
+                            reason=f"Get collaboration assessment for session {session_id} (need {3 - len(sessions_with_7c)} more for correlation)"
                         )
                     )
 
@@ -1879,8 +1939,8 @@ Write a conversational response that guides the user through the evidence."""
                 if sessions:
                     return sessions[0].get('session_id')
 
-            # From get_transcript, get_concept_map, get_7c_analysis
-            if tool in ('get_transcript', 'get_concept_map', 'get_7c_analysis'):
+            # From get_transcript, get_concept_map, get_collaboration_assessment
+            if tool in ('get_transcript', 'get_concept_map', 'get_collaboration_assessment'):
                 if 'discussion_id' in result:
                     return result.get('discussion_id')
                 # Also check params
@@ -1896,21 +1956,44 @@ Write a conversational response that guides the user through the evidence."""
 
         Prioritizes:
         1. Sessions from search results
-        2. Top sessions by collaboration score
-        3. Default fallback
+        2. All sessions by collaboration score (queried dynamically from DB)
+        3. First available session as fallback
         """
         retrieved = analysis.get('retrieved_sessions', set())
 
-        # For superlative queries, use sessions by score priority
-        # These are ordered by collaboration score (highest first)
-        top_sessions_by_score = [24, 21, 23, 20, 26, 19, 22, 18, 25]
+        # Get all sessions ordered by collaboration score dynamically
+        try:
+            import mysql.connector
+            conn = mysql.connector.connect(
+                host='localhost', user='vagrant', password='vagrant', database='discussion_capture'
+            )
+            cursor = conn.cursor()
+            # Get sessions ordered by avg collaboration score (highest first)
+            cursor.execute("""
+                SELECT s.id
+                FROM session s
+                LEFT JOIN session_device sd ON sd.session_id = s.id
+                LEFT JOIN seven_cs_analysis sca ON sca.session_device_id = sd.id
+                GROUP BY s.id
+                ORDER BY AVG(JSON_EXTRACT(sca.analysis_summary, '$.overall_score')) DESC, s.id
+            """)
+            all_sessions = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            conn.close()
 
-        for session_id in top_sessions_by_score:
-            if session_id not in retrieved:
-                return session_id
+            for session_id in all_sessions:
+                if session_id not in retrieved:
+                    return session_id
 
-        # Fallback
-        return 24  # Country Music (highest collaboration score)
+        except Exception as e:
+            logger.warning(f"[Sessions] Failed to query session scores: {e}")
+
+        # Fallback: return first session not yet retrieved
+        all_ids = list(get_session_name_mapping().values())
+        for sid in all_ids:
+            if sid not in retrieved:
+                return sid
+        return all_ids[0] if all_ids else 18
 
     def _mentions_retrieval_intent(self, content: str) -> bool:
         """
@@ -2049,7 +2132,7 @@ Write a conversational response that guides the user through the evidence."""
                 reason=f"Get speaker profile for '{speaker_name}' (for comparison)"
             )
 
-        # CORRELATION: Start with list_sessions to see all sessions, then retrieve 7C
+        # CORRELATION: Start with list_sessions to see all sessions, then retrieve collaboration assessment
         if classification.query_type == 'correlation':
             return ToolCall(
                 name="list_sessions",
@@ -2109,7 +2192,7 @@ Write a conversational response that guides the user through the evidence."""
         query_lower = query.lower()
 
         if any(kw in query_lower for kw in ['collaborat', '7c', 'engagement', 'quality', 'score', 'constructive', 'conflict', 'climate']):
-            return "get_7c_analysis"
+            return "get_collaboration_assessment"
         elif any(kw in query_lower for kw in ['concept', 'idea', 'problem', 'solution', 'goal', 'connect', 'map', 'node']):
             return "get_concept_map"
         else:
@@ -2136,7 +2219,7 @@ Write a conversational response that guides the user through the evidence."""
                 retrieved_types.add("concept_map")
                 if result.get("discussion_id"):
                     retrieved_sessions.add(result.get("discussion_id"))
-            elif tool == "get_7c_analysis":
+            elif tool == "get_collaboration_assessment":
                 retrieved_types.add("7c")
                 if result.get("discussion_id"):
                     retrieved_sessions.add(result.get("discussion_id"))
@@ -2147,7 +2230,7 @@ Write a conversational response that guides the user through the evidence."""
             if "concept_map" not in retrieved_types:
                 suggestions.append(f"You might want to explore the concept map for session {session_id} to see how ideas connect.")
             if "7c" not in retrieved_types:
-                suggestions.append(f"The 7C collaboration analysis for session {session_id} could show interaction quality.")
+                suggestions.append(f"The collaboration assessment for session {session_id} could show interaction quality.")
 
         return suggestions[:2]  # Limit suggestions
 

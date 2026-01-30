@@ -147,13 +147,6 @@ def format_response(state: AgentState) -> AgentState:
     answer = state.get('final_answer', '')
     suggestions = state.get('suggestions', [])
 
-    # Append suggestions if present and not already mentioned
-    if suggestions and "might want to" not in answer.lower():
-        suggestion_text = "\n\n**You might also want to explore:**\n"
-        for s in suggestions:
-            suggestion_text += f"- {s}\n"
-        answer += suggestion_text
-
     return {
         **state,
         'final_answer': answer,

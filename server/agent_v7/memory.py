@@ -107,9 +107,9 @@ def _load_session_names_from_db() -> List[tuple]:
         connection = _get_db_connection()
         cursor = connection.cursor()
 
-        # Get session_device.id and session.name for all sessions
+        # Get session_device.id, session.name, and device name for all sessions
         cursor.execute("""
-            SELECT sd.id as session_id, s.name as session_name
+            SELECT sd.id as session_id, s.name as session_name, sd.name as device_name
             FROM session_device sd
             JOIN session s ON sd.session_id = s.id
             WHERE s.name IS NOT NULL AND s.name != ''
@@ -119,18 +119,24 @@ def _load_session_names_from_db() -> List[tuple]:
         cursor.close()
         connection.close()
 
-        # Build mapping with both full names and individual words
+        # Build mapping with full names, device names, and individual words
         name_to_id: Dict[str, int] = {}
         word_to_id: Dict[str, int] = {}
 
-        for session_id, session_name in rows:
+        for session_id, session_name, device_name in rows:
             if not session_name:
                 continue
 
             name_lower = session_name.lower().strip()
 
-            # Full name (highest priority)
-            name_to_id[name_lower] = session_id
+            # Full name (highest priority) — for multi-device sessions, first wins
+            if name_lower not in name_to_id:
+                name_to_id[name_lower] = session_id
+
+            # Device name mapping (e.g., "midnight" -> 43, "dev30" -> 47)
+            if device_name:
+                device_lower = device_name.lower().strip()
+                name_to_id[device_lower] = session_id
 
             # Also extract individual words for fuzzy matching
             # Skip very short words and common stop words
@@ -138,8 +144,6 @@ def _load_session_names_from_db() -> List[tuple]:
             for word in name_lower.split():
                 word = word.strip()
                 if len(word) >= 2 and word not in stop_words:
-                    # Don't overwrite if word already mapped to different session
-                    # (keeps first occurrence, which is fine for now)
                     if word not in word_to_id:
                         word_to_id[word] = session_id
 
@@ -242,6 +246,7 @@ class ConversationMemory:
 
     # Current focus (persists across turns)
     session_focus: Optional[int] = None
+    session_focus_from_query: bool = False  # True if user explicitly named a session
     session_name: Optional[str] = None
     speaker_focus: Optional[str] = None
 
