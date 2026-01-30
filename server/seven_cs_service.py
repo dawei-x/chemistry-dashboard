@@ -219,15 +219,18 @@ def analyze_session_seven_cs(session_device_id):
             db.session.commit()
         return None
 
-def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, overlap=10, deduplicate=True):
+def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=8, overlap=2, deduplicate=True):
     """
     Process transcripts in sliding windows and code them with 7C dimensions.
+
+    Uses transcript-count-based windows instead of time-based windows for consistent
+    content density regardless of conversation pace.
 
     Args:
         analysis_id: ID of the analysis record
         transcripts: List of transcript objects
-        window_size: Size of sliding window in seconds
-        overlap: Overlap between windows in seconds
+        window_size: Number of transcripts per window (default 8)
+        overlap: Number of transcripts to overlap between windows (default 2)
         deduplicate: Whether to deduplicate segments (default True)
 
     Returns:
@@ -246,35 +249,36 @@ def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, ove
         logging.info(f"No transcripts to process for analysis {analysis_id}")
         return coded_segments
 
-    # Create sliding windows
-    start_time = sorted_transcripts[0].start_time
-    end_time = sorted_transcripts[-1].start_time + sorted_transcripts[-1].length
+    total_transcripts = len(sorted_transcripts)
+    step = window_size - overlap  # How many transcripts to advance each iteration
 
-    logging.info(f"Processing {len(sorted_transcripts)} transcripts from {start_time} to {end_time} seconds")
+    logging.info(f"Processing {total_transcripts} transcripts with window_size={window_size}, overlap={overlap}")
 
-    current_window_start = start_time
+    # Process transcript-count-based sliding windows
+    window_start_idx = 0
+    window_num = 0
 
-    while current_window_start < end_time:
-        window_end = min(current_window_start + window_size, end_time)
-
-        # Get transcripts in this window
-        window_transcripts = [
-            t for t in sorted_transcripts
-            if t.start_time < window_end and t.start_time + t.length > current_window_start
-        ]
+    while window_start_idx < total_transcripts:
+        window_end_idx = min(window_start_idx + window_size, total_transcripts)
+        window_transcripts = sorted_transcripts[window_start_idx:window_end_idx]
+        window_num += 1
 
         if window_transcripts:
+            # Get time range for logging and storage
+            window_start_time = window_transcripts[0].start_time
+            window_end_time = window_transcripts[-1].start_time + window_transcripts[-1].length
+
             # Prepare window text
             window_text = prepare_window_text(window_transcripts)
-            logging.info(f"Processing window {current_window_start}-{window_end}s with {len(window_transcripts)} transcripts")
+            logging.info(f"Processing window {window_num} (transcripts {window_start_idx+1}-{window_end_idx}, time {window_start_time:.0f}-{window_end_time:.0f}s)")
 
             # Code this window with deduplication
             window_codings = code_window_with_seven_cs_deduplicated(
                 window_text,
                 analysis_id,
                 window_transcripts,
-                current_window_start,
-                window_end,
+                window_start_time,
+                window_end_time,
                 already_coded,
                 deduplicate
             )
@@ -284,10 +288,10 @@ def code_transcripts_with_seven_cs(analysis_id, transcripts, window_size=30, ove
             duplicates_skipped += window_codings['duplicates_skipped']
             coded_segments.extend(window_codings['segments'])
 
-            logging.info(f"Window produced {window_codings['total']} codings, {window_codings['duplicates_skipped']} duplicates skipped")
+            logging.info(f"Window {window_num} produced {window_codings['total']} codings, {window_codings['duplicates_skipped']} duplicates skipped")
 
-        # Move to next window
-        current_window_start += (window_size - overlap)
+        # Move to next window by step (window_size - overlap)
+        window_start_idx += step
 
     logging.info(f"Coding complete: {total_codings} total codings from LLM, {duplicates_skipped} duplicates skipped, {len(coded_segments)} unique segments stored")
     return coded_segments
@@ -730,7 +734,7 @@ Coded segments found:
 {json.dumps(dimension_counts, indent=2)}
 
 Full Discussion Transcript:
-{full_transcript_text[:8000]}  # Limit to avoid token limits
+{full_transcript_text}
 
 For EACH of the 7 dimensions, provide:
 1. A score from 0-100

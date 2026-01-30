@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class LLMConfig:
     """Configuration for LLM clients."""
     provider: str = "openai"  # openai, anthropic, ollama
-    model: str = "gpt-4o"
+    model: str = "gpt-4.1-mini"
     temperature: float = 0.1
     max_tokens: int = 1000
     api_key: Optional[str] = None
@@ -26,7 +26,7 @@ class LLMConfig:
 
     # Model presets for different tasks
     REASONING_MODELS = {
-        "openai": "gpt-4o",
+        "openai": "gpt-4.1-mini",
         "anthropic": "claude-sonnet-4-20250514",
         "ollama": "llama3.1:70b"
     }

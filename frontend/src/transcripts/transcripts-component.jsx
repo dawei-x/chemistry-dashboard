@@ -364,6 +364,7 @@ const createDisplayTranscripts = ()=> {
   return(
     <TranscriptComponentPage
       sessionDevice = {sessionDevice}
+      sessionDeviceId = {sessionDeviceId}
       currentForm = {currentForm}
       navigateToSession = {navigateToSession}
       displayTranscripts = { displayTranscripts}
@@ -379,7 +380,7 @@ const createDisplayTranscripts = ()=> {
       legendRef = {legendRef}
       showKeywords = {showKeywords}
       toggleKeywords = {toggleKeywords}
-      highlightRange = {highlightRange} 
+      highlightRange = {highlightRange}
     />
   )
 }

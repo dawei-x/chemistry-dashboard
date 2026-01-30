@@ -316,6 +316,9 @@ def search_for_sessions(
 
         # Sort by RRF score
         sorted_sessions = sorted(session_scores.values(), key=lambda x: x['best_match_score'], reverse=True)
+        # Debug: log all session scores before filtering
+        for s in sorted_sessions:
+            logger.info(f"  [RRF] Session {s['session_id']} ({s['session_name']}): score={s['best_match_score']:.4f}, collections={s['collections_matched']}")
 
         # =========================================================================
         # STEP 3.5: Inject exact name matches at the TOP with high priority
@@ -2346,12 +2349,12 @@ def get_concept_map(session_id: int) -> Dict[str, Any]:
 
 
 # =============================================================================
-# NEW TOOL: get_7c_analysis - Collaboration Analysis Retrieval
+# NEW TOOL: get_collaboration_assessment - Collaboration Analysis Retrieval
 # =============================================================================
 
-def get_7c_analysis(session_id: int) -> Dict[str, Any]:
+def get_collaboration_assessment(session_id: int) -> Dict[str, Any]:
     """
-    Get 7C collaboration analysis for a session.
+    Get collaboration assessment for a session.
 
     Use this to see HOW WELL the group collaborated across 7 dimensions.
 
@@ -2371,7 +2374,7 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
         - summary: overall score, interpretation, strengths, weaknesses
         - dimensions: detailed scores and evidence for each dimension
     """
-    logger.info(f"Getting 7C analysis for session {session_id}")
+    logger.info(f"Getting collaboration assessment for session {session_id}")
 
     collab_data = _get_collaboration_data(session_id)
 
@@ -2393,7 +2396,7 @@ def get_7c_analysis(session_id: int) -> Dict[str, Any]:
         meta = None
 
     return {
-        "tool_name": "get_7c_analysis",
+        "tool_name": "get_collaboration_assessment",
         "session_id": session_id,
         "session_name": meta['session_name'] if meta else f"Session {session_id}",
         "artifact_type": "collaboration",
@@ -2643,7 +2646,7 @@ ARTIFACT_TOOLS = {
     # Artifact retrieval (separate tools - preferred)
     "get_transcript": get_transcript,
     "get_concept_map": get_concept_map,
-    "get_7c_analysis": get_7c_analysis,
+    "get_collaboration_assessment": get_collaboration_assessment,
     "get_liwc_metrics": get_liwc_metrics,
 
     # Legacy combined artifact retrieval (for backward compatibility)
@@ -2700,8 +2703,8 @@ Get concept map with nodes, edges, clusters, and reasoning patterns.
 Use to see HOW ideas connect and the structure of reasoning.
 Returns: nodes, edges, clusters, reasoning_patterns, hub_nodes.
 
-#### 5. get_7c_analysis(session_id)
-Get 7C collaboration analysis.
+#### 5. get_collaboration_assessment(session_id)
+Get collaboration assessment.
 Use to see HOW WELL the group collaborated across 7 dimensions:
 - climate, communication, contribution, conflict, context, constructive, compatibility
 Returns: summary (overall score, strengths, weaknesses), dimensions with evidence.

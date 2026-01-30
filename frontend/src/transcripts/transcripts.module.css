@@ -644,3 +644,15 @@ hr {
   border-left: 4px solid #3498db !important;
   background-color: rgba(52, 152, 219, 0.1) !important;
 }
+/* Expert Annotation Layout - Page Wrapper */
+.pageWrapper {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.pageWrapper > .container {
+  flex: 1;
+  overflow-y: auto;
+}

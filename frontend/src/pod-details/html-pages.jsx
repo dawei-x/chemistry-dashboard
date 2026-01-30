@@ -3,15 +3,13 @@ import { AppSpinner } from "../spinner/spinner-component";
 import { AppSessionToolbar } from "../session-toolbar/session-toolbar-component";
 import { Appheader } from "../header/header-component";
 import style from "./pod.module.css";
-import React, { useState } from "react";
+import React from "react";
 import Select from "react-select";
 import { AppInfographicsComparison } from "../components/infographics-view/infographics-comparison";
-import { DiscussionPulsePanel } from "../components/discussion-pulse";
+// import { DiscussionPulsePanel } from "../components/discussion-pulse";
+import { ExpertConceptMapRatingPanel } from "../components/concept-map/ExpertConceptMapRatingPanel";
 
 function PodComponentPages(props) {
-  // Discussion Pulse panel state
-  const [pulseCollapsed, setPulseCollapsed] = useState(false);
-
   // Check if session is active (not ended)
   const isSessionActive = props.session && !props.session.end_date;
 
@@ -68,13 +66,10 @@ function PodComponentPages(props) {
               />
             </div>
 
-            {/* Discussion Pulse Panel - Collapsible sidebar */}
+            {/* Expert Concept Map Rating Panel - Right sidebar */}
             {props.sessionDevice?.id && (
-              <DiscussionPulsePanel
+              <ExpertConceptMapRatingPanel
                 sessionDeviceId={props.sessionDevice.id}
-                isSessionActive={isSessionActive}
-                isCollapsed={pulseCollapsed}
-                onToggleCollapse={() => setPulseCollapsed(!pulseCollapsed)}
               />
             )}
           </div>

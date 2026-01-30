@@ -309,28 +309,18 @@ def extract_concepts_from_full_transcript(transcript_text, line_to_timestamp=Non
         logging.warning(f"Transcript very long ({len(transcript_text)} chars), truncating to {max_chars}")
         transcript_text = transcript_text[:max_chars] + "\n[... transcript truncated ...]"
 
-    prompt = f"""Analyze this discussion and extract an INTERCONNECTED knowledge graph.
-
-CRITICAL: Create a GRAPH, not a chain. Concepts should have multiple connections.
-- Link concepts by THEME, not just by sequence
-- Find connections between ideas mentioned at DIFFERENT times in the discussion
-- The same topic discussed early and late should be connected
-- Aim for concepts to have 2-4 relationships each, not just 1
+    prompt = f"""Analyze this discussion and extract a knowledge graph that faithfully represents the ideas and how they relate.
 
 DISCUSSION TRANSCRIPT (each line starts with L# for line reference):
 {transcript_text}
 
-EXTRACTION GUIDELINES:
-1. First pass: Identify ALL key concepts throughout the discussion
-2. Second pass: Find THEMATIC relationships (same topic, contrasting views, supporting evidence)
-3. Connect concepts that share themes even if mentioned far apart
-4. Avoid purely sequential chains - if A→B→C, also look for A→C or other cross-links
-5. Look for recurring themes and connect all instances
+TASK: Extract the key concepts from this discussion and identify how they are connected. Focus on accurately representing the intellectual content — what was discussed, and how the ideas relate to each other.
 
-CONCEPT TYPES:
+CONCEPT TYPES (choose the most fitting):
 - idea: Main concepts and claims
 - question: Questions asked (preserve question form)
-- example: Concrete examples
+- hypothesis: Testable predictions or proposed explanations
+- example: Concrete examples given
 - problem: Problems or challenges identified
 - solution: Proposed solutions or approaches
 - goal: Stated objectives or goals
@@ -338,23 +328,22 @@ CONCEPT TYPES:
 - conclusion: Final decisions or conclusions reached
 - action: Action items or next steps
 
-RELATIONSHIP TYPES (prioritize non-sequential connections):
-- relates_to: Thematically connected concepts
-- similar_to: Concepts expressing similar ideas
-- contrasts_with: Opposing or alternative viewpoints
-- supports: Evidence or agreement
-- challenges: Disagreements or counterpoints
-- elaborates: Adding detail (can skip intermediate concepts)
-- answers: Response to a question (may be distant in transcript)
-- exemplifies: Concrete example of abstract concept
-- synthesizes: Combining multiple ideas
-- builds_on: Only when genuinely developing an idea (not just "next in sequence")
+RELATIONSHIP TYPES (choose the type that best describes the actual relationship):
+- supports: One idea provides evidence for or agrees with another
+- contrasts_with: Two ideas present opposing or alternative viewpoints
+- elaborates: One idea adds detail or explanation to another
+- builds_on: One idea genuinely develops or extends another
+- challenges: One idea disagrees with or counters another
+- exemplifies: One idea is a concrete example of another
+- answers: One idea responds to a question
+- similar_to: Two ideas express similar things in different words
+- synthesizes: One idea combines multiple other ideas
+- relates_to: A thematic connection that doesn't fit the above types
 
-IMPORTANT REQUIREMENTS:
-- Each concept should connect to 2-4 other concepts
-- At least 30% of edges should connect NON-ADJACENT concepts (different parts of discussion)
-- Look for the SAME THEME appearing multiple times and connect those instances
-- Extract 15-40 concepts depending on discussion length
+REQUIREMENTS:
+- Extract the concepts that matter — capture the substance of the discussion
+- Connect ideas based on their actual intellectual relationship, not their order in the transcript
+- If two ideas discuss the same theme at different points, connect them
 - For "source_line", use the LINE NUMBER (e.g., 5 for L5) where the concept is primarily mentioned
 
 Return a JSON object:
@@ -371,21 +360,14 @@ Return a JSON object:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-4.1",
             response_format={"type": "json_object"},
             messages=[
                 {
                     "role": "system",
-                    "content": """You are an expert knowledge graph extractor specializing in academic discussions.
-Your goal is to create an INTERCONNECTED knowledge graph, not a linear chain.
-
-KEY PRINCIPLES:
-- Find THEMATIC connections between concepts, regardless of when they were mentioned
-- Link related ideas even if they appear at different points in the discussion
-- Create a web of relationships, not a timeline
-- Identify recurring themes and connect all instances
-- Each concept should have multiple connections (2-4 edges)
-- Prioritize cross-referencing over sequential links"""
+                    "content": """You are an expert knowledge graph extractor for academic discussions.
+Extract a concept map that faithfully represents the intellectual content of the discussion.
+Connect ideas based on their actual relationships — thematic, logical, argumentative — not just their sequence in the transcript."""
                 },
                 {
                     "role": "user",
@@ -393,7 +375,7 @@ KEY PRINCIPLES:
                 }
             ],
             temperature=0.3,
-            max_tokens=4000
+            max_tokens=16000
         )
 
         result = json.loads(response.choices[0].message.content)

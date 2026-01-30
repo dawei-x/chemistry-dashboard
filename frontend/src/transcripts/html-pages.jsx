@@ -3,13 +3,15 @@ import style from './transcripts.module.css'
 import style2 from '../dialog/dialog.module.css'
 import { GenericDialogBox } from '../dialog/dialog-component'
 import {Appheader} from '../header/header-component'
+import { ExpertAnnotationPanel } from './expert-annotation-panel'
 
 function TranscriptComponentPage(props) {
 
   return (
     <>
-      <div className={style.container}>
-        <Appheader
+      <div className={style.pageWrapper}>
+        <div className={style.container}>
+          <Appheader
           title={"Transcripts from" + " " + props.sessionDevice.name}
           leftText={false}
           rightText={"Options"}
@@ -55,6 +57,10 @@ function TranscriptComponentPage(props) {
 
           }
         </div>
+        </div>
+
+        {/* Expert Annotation Panel - Right Side */}
+        <ExpertAnnotationPanel sessionDeviceId={props.sessionDeviceId} />
       </div>
 
       <GenericDialogBox show={props.currentForm !== ""} >

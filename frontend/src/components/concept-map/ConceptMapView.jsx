@@ -833,9 +833,7 @@ function ConceptMapView({ sessionId, sessionDeviceId }) {
 
       // Use sessionDeviceId prop instead of parsing from node ID
       // This works for both real-time (node_123:456_0) and post-discussion (node_42_0) formats
-      // Use max(0, timestamp - 20) to avoid negative timestamps
-      const adjustedTimestamp = Math.max(0, Math.floor(timestamp) - 20);
-      fetch(`/api/v1/concepts/${sessionDeviceId}/transcripts/${adjustedTimestamp}`)
+      fetch(`/api/v1/concepts/${sessionDeviceId}/transcripts/${Math.floor(timestamp)}`)
         .then(res => {
           if (!res.ok) {
             throw new Error(`HTTP ${res.status}`);

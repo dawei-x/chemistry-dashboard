@@ -268,50 +268,31 @@ class SessionSerializer:
             speaker_name = speaker_map.get(node.speaker_id, "Unknown") if node.speaker_id else "Unknown"
             by_type[node_type].append((node.text, speaker_name))
 
-        # Key concepts by type with speaker attribution
+        # Key concepts by type with speaker attribution (no truncation)
         parts.append("\nCONCEPT STRUCTURE:")
 
-        # Questions (critical for inquiry-based discussions)
-        if by_type.get('question'):
-            questions = by_type['question'][:4]
-            parts.append(f"- Questions ({len(by_type['question'])}):")
-            for text, speaker in questions:
-                parts.append(f'  {speaker} asked: "{text[:80]}"')
+        # Node type configuration: (plural_label, verb_phrase)
+        # All 10 supported node types from concept_generation_service.py
+        node_type_config = {
+            'question': ('Questions', 'asked'),
+            'idea': ('Ideas', 'proposed'),
+            'hypothesis': ('Hypotheses', 'hypothesized'),
+            'example': ('Examples', 'illustrated'),
+            'problem': ('Problems', 'identified'),
+            'solution': ('Solutions', 'suggested'),
+            'goal': ('Goals', 'set goal'),
+            'uncertainty': ('Uncertainties', 'expressed doubt'),
+            'conclusion': ('Conclusions', 'concluded'),
+            'action': ('Actions', 'proposed action'),
+        }
 
-        # Ideas/elaborations
-        if by_type.get('idea'):
-            ideas = by_type['idea'][:4]
-            parts.append(f"- Ideas ({len(by_type['idea'])}):")
-            for text, speaker in ideas:
-                parts.append(f'  {speaker} proposed: "{text[:80]}"')
-
-        # Hypotheses
-        if by_type.get('hypothesis'):
-            hyps = by_type['hypothesis'][:3]
-            parts.append(f"- Hypotheses ({len(by_type['hypothesis'])}):")
-            for text, speaker in hyps:
-                parts.append(f'  {speaker} hypothesized: "{text[:80]}"')
-
-        # Problems/solutions (for problem-solving discussions)
-        if by_type.get('problem'):
-            probs = by_type['problem'][:3]
-            parts.append(f"- Problems ({len(by_type['problem'])}):")
-            for text, speaker in probs:
-                parts.append(f'  {speaker} identified: "{text[:80]}"')
-
-        if by_type.get('solution'):
-            sols = by_type['solution'][:3]
-            parts.append(f"- Solutions ({len(by_type['solution'])}):")
-            for text, speaker in sols:
-                parts.append(f'  {speaker} suggested: "{text[:80]}"')
-
-        # Conclusions/synthesis
-        for conclusion_type in ['conclusion', 'synthesis']:
-            if by_type.get(conclusion_type):
-                concs = by_type[conclusion_type][:2]
-                parts.append(f"- {conclusion_type.title()}s ({len(by_type[conclusion_type])}):")
-                for text, speaker in concs:
-                    parts.append(f'  {speaker} concluded: "{text[:80]}"')
+        # Process all node types without truncation
+        for node_type, (label, verb) in node_type_config.items():
+            if by_type.get(node_type):
+                nodes_of_type = by_type[node_type]
+                parts.append(f"- {label} ({len(nodes_of_type)}):")
+                for text, speaker in nodes_of_type:
+                    parts.append(f'  {speaker} {verb}: "{text[:80]}"')
 
         # Edge type patterns
         if edges:
@@ -437,7 +418,10 @@ class SessionSerializer:
     def _serialize_seven_cs(self, analysis) -> str:
         """
         Serialize 7C analysis with scores, explanations, and evidence.
-        Not just scores - include the rich qualitative data!
+
+        The explanation serves as a "semantic shortcut" - natural language queries
+        about collaboration quality can match against these interpretive descriptions.
+        Key evidence provides concrete grounding from the transcript.
         """
         if not analysis or not analysis.analysis_summary:
             return ""
@@ -456,22 +440,17 @@ class SessionSerializer:
             score = dim_data.get('score', 0)
             explanation = dim_data.get('explanation', '')
             evidence_list = dim_data.get('evidence', [])
-            keywords = dim_data.get('keywords_found', [])
 
-            # Format evidence (top 2 quotes)
+            # Format evidence (top 2 quotes, no truncation)
             evidence_str = ""
             if evidence_list:
                 evidence_quotes = evidence_list[:2]
-                evidence_str = "; ".join(f'"{e[:100]}"' for e in evidence_quotes if e)
-
-            # Format keywords
-            keywords_str = ", ".join(keywords[:5]) if keywords else ""
+                evidence_str = "; ".join(f'"{e}"' for e in evidence_quotes if e)
 
             parts.append(f"""
 {dimension.upper()} ({score}/100):
-  {explanation[:200] if explanation else 'No explanation available'}
-  Evidence: {evidence_str if evidence_str else 'No evidence recorded'}
-  Keywords: {keywords_str if keywords_str else 'None identified'}""")
+  {explanation if explanation else 'No explanation available'}
+  Evidence: {evidence_str if evidence_str else 'No evidence recorded'}""")
 
         return "\n".join(parts)
 
